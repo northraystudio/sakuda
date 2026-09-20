@@ -52,7 +52,7 @@
       "source": {
         "source": "github",
         "repo": "northraystudio/maruda",
-        "ref": "main"
+        "ref": "maruda--v0.1.1"
       }
     }
   },

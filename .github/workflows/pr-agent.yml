@@ -12,13 +12,10 @@ on:
     # synchronize is kept so pr-agent's push handler (.pr_agent.toml
     # handle_push_trigger / push_commands) can run on new commits.
     types: [opened, synchronize, reopened, ready_for_review]
-    branches:
-      - main
-      # batch (epic) and stacked-PR bases — see .claude/rules/maruda-cycle.md
-      - 'epic/**'
-      - 'feat/**'
-      - 'fix/**'
-      - 'refactor/**'
+    # No branches filter: a PR must be verified whatever its base, so stacked
+    # and batched work cannot slip through on a base type nobody enumerated
+    # (chore/**, docs/** …). Branch naming is <type>/<issue>-<summary> and the
+    # set of types is open — see .claude/rules/maruda-cycle.md.
   issue_comment:
     types: [created]
 

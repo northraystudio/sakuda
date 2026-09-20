@@ -28,3 +28,12 @@ Delete this file when everything is checked.
   declares `"packageManager": "pnpm@10.26.1"`, and the action throws
   `Multiple versions of pnpm specified` unless the two strings match exactly.
   The version is intentionally read from `packageManager` alone.
+- **Keep `pull_request` without a `branches:` filter.** The maruda template
+  enumerates `main`, `epic/**`, `feat/**`, `fix/**`, `refactor/**`. Branch
+  naming is `<type>/<issue>-<summary>` with an open set of types, so an
+  enumerated list silently skips CI for PRs based on `chore/**`, `docs/**`
+  and friends. A PR must be verified whatever its base.
+- **`extraKnownMarketplaces.northraystudio.source.ref` is pinned to a release
+  tag**, not `main` — same supply-chain rule as the SHA-pinned actions.
+  Marketplace sources do not accept a commit SHA, so a tag is the immutable
+  unit. Bump it deliberately.

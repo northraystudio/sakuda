@@ -9,13 +9,10 @@ name: Security Scan
 
 on:
   pull_request:
-    branches:
-      - main
-      # batch (epic) and stacked-PR bases — see .claude/rules/maruda-cycle.md
-      - 'epic/**'
-      - 'feat/**'
-      - 'fix/**'
-      - 'refactor/**'
+    # No branches filter: a PR must be verified whatever its base, so stacked
+    # and batched work cannot slip through on a base type nobody enumerated
+    # (chore/**, docs/** …). Branch naming is <type>/<issue>-<summary> and the
+    # set of types is open — see .claude/rules/maruda-cycle.md.
   # Direct pushes to the default / integration branch are scanned too
   # (bypass coverage). Feature and epic branches are covered via pull_request.
   push:

@@ -4,13 +4,10 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches:
-      - main
-      # batch (epic) and stacked-PR bases — see .claude/rules/maruda-cycle.md
-      - 'epic/**'
-      - 'feat/**'
-      - 'fix/**'
-      - 'refactor/**'
+    # No branches filter: a PR must be verified whatever its base, so stacked
+    # and batched work cannot slip through on a base type nobody enumerated
+    # (chore/**, docs/** …). Branch naming is <type>/<issue>-<summary> and the
+    # set of types is open — see .claude/rules/maruda-cycle.md.
     paths:
       - '**/*.ts'
       - '**/*.tsx'
