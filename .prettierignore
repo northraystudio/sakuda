@@ -5,10 +5,9 @@ data
 pnpm-lock.yaml
 server/db/migrations/meta
 
-# Pre-existing docs from the dev-skills harness scaffold, out of this task's scope.
+# Harness scaffold docs and generated workflows — not reformatted.
 CLAUDE.md
 DESIGN.md
-.agents/
 .github/workflows/ci.yml
 
 # Verbatim copy of the SDD plan (Task 0, step 10) — must not be reformatted.

@@ -31,14 +31,25 @@ UI/visual work (colors, typography, spacing, radius, components) must follow
 Reference its tokens (`{colors.ink}`, `{rounded.full}`, `{component.button-primary}`)
 rather than inventing values; add new variants there before using them in code.
 
+## Flow
+
+- PR integration branch: `main` — CI and review always run on
+  the PR into it. `main` is the default branch.
+- Default flow for several Issues at once: `individual`
+  (individual / batch / stack). Whether Issues are batched is decided by
+  "do these ship together?", not by the dependency graph.
+- Dependencies between Issues live on the Issue itself (GitHub `blocked_by` /
+  sub-issues) and may be updated at any time. See `.claude/rules/maruda-cycle.md`.
+
 ## Improvement cycle
 
 Prefer the cycle over ad-hoc one-shot fixes:
-Diagnose (`/yds-software-evaluation`, `/yds-vulnerability-scan`, `/yds-data-validation`)
-→ Draft/Register (`/yds-gh-issue-drafter`, `/yds-report-to-issues`)
-→ Plan (`/yds-gh-issue-planner`) → Resolve+Verify (`/yds-gh-issue-resolver`).
+Diagnose (`/maruda:software-evaluation`, `/maruda:vulnerability-scan`, `/maruda:data-validation`)
+→ Draft/Register (`/maruda:gh-issue-drafter`, `/maruda:report-to-issues`)
+→ Plan (`/maruda:gh-issue-planner`) → Resolve+Verify (`/maruda:gh-issue-resolver`,
+or `/maruda:gh-batch-runner` when several Issues ship together).
 
-Rules live in `.claude/rules/`: the cycle contract (`dev-skills-cycle.md`),
+Rules live in `.claude/rules/`: the cycle contract (`maruda-cycle.md`),
 score-aligned coding principles (`coding-principles.md` — following them is
-what a high `/yds-software-evaluation` score looks like), and per-language
+what a high `/maruda:software-evaluation` score looks like), and per-language
 rules. Long workflows live in `.claude/skills/*/SKILL.md` — keep this file short.
