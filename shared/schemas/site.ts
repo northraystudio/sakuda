@@ -37,6 +37,10 @@ const SiteFieldsSchema = z.object({
   crawlScopePaths: z.string().max(5_000).default(''),
   excludePaths: z.string().max(5_000).default(''),
   nucleiRateLimit: z.number().int().min(1).max(1000).default(50),
+  /** Per-site overrides of SAKUDA_NUCLEI_MAX_MINUTES / SAKUDA_NUCLEI_CONCURRENCY;
+   * null → the env value (see server/domain/nucleiLimits). */
+  nucleiMaxMinutes: z.number().int().min(1).max(600).nullable().default(null),
+  nucleiConcurrency: z.number().int().min(1).max(100).nullable().default(null),
   zapApiMaxMinutes: z.number().int().min(1).max(600).default(45),
   zapFeSpiderMaxMinutes: z.number().int().min(1).max(120).default(5),
   nonLocalConfirmed: z.boolean().default(false),

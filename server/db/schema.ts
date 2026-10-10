@@ -22,6 +22,8 @@ export const sites = sqliteTable('sites', {
   crawlScopePaths: text('crawl_scope_paths').notNull().default(''),
   excludePaths: text('exclude_paths').notNull(),
   nucleiRateLimit: integer('nuclei_rate_limit').notNull(),
+  nucleiMaxMinutes: integer('nuclei_max_minutes'),
+  nucleiConcurrency: integer('nuclei_concurrency'),
   zapApiMaxMinutes: integer('zap_api_max_minutes').notNull(),
   zapFeSpiderMaxMinutes: integer('zap_fe_spider_max_minutes').notNull(),
   nonLocalConfirmed: integer('non_local_confirmed', { mode: 'boolean' }).notNull(),

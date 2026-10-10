@@ -12,6 +12,7 @@ import {
 import { engineTimeBudget, timeBudgetEnv } from '../../domain/engineTimeBudget'
 import { restoreLoopbackHost, rewriteLoopbackHost } from '../../domain/hostAlias'
 import { buildNonGetOpenApiDocs } from '../../domain/openapiGen'
+import { effectiveNucleiLimits } from '../../domain/nucleiLimits'
 import { countSkippedMethods, expandNucleiTargets } from '../../domain/nucleiTargets'
 import type { SeverityCounts } from '#shared/types/api'
 import { emptyCounts } from '#shared/utils/severity'
@@ -101,6 +102,7 @@ async function runNucleiPhases(
   { scanId, site, workDir, env, logger, signal }: EngineInput,
   headersConfigFile: string | null,
 ): ReturnType<EngineRunner> {
+  const limits = effectiveNucleiLimits(site, env.nuclei)
   const { targets, excluded } = expandNucleiTargets(site)
   // Hash routes (`/#/search?q=`) are SPA client routes: the fragment never
   // reaches the server, so requesting one just GETs `/`. nuclei is
@@ -243,7 +245,7 @@ async function runNucleiPhases(
       workDir,
       bin: env.httpx.bin,
       timeoutMs: Math.min(env.httpx.maxMinutes * 60_000, budgetFor(laterPhases)),
-      threads: env.nuclei.concurrency,
+      threads: limits.concurrency,
       rateLimit: site.nucleiRateLimit,
       headersConfigFile,
       pruneStatusCodes: env.httpx.pruneStatusCodes,
@@ -269,7 +271,7 @@ async function runNucleiPhases(
   // --- phase 1a: GET URL list, DAST templates (active checks only) --------
   // Runs FIRST: the DAST tree is ~20 templates and finishes in well under a
   // minute, while the signature tree can run for hours on a large target
-  // list. The phases share one engine budget (`env.nuclei.maxMinutes`), so
+  // list. The phases share one engine budget (`limits.maxMinutes`), so
   // the short one must not queue behind the long one — with the host-error
   // guard off (#82) the signature phase now routinely reaches the budget,
   // and running DAST second would silently skip it every time.
@@ -286,7 +288,7 @@ async function runNucleiPhases(
       dastTemplatesDir: env.nuclei.dastTemplatesDir,
       outputFile,
       rateLimit: site.nucleiRateLimit,
-      concurrency: env.nuclei.concurrency,
+      concurrency: limits.concurrency,
       tags,
       excludeTags: riskExcludeTags(riskTags),
       headersConfigFile,
@@ -327,7 +329,7 @@ async function runNucleiPhases(
         templatesDir: env.nuclei.templatesDir,
         outputFile,
         rateLimit: site.nucleiRateLimit,
-        concurrency: env.nuclei.concurrency,
+        concurrency: limits.concurrency,
         tags: NUCLEI_PRIORITY_SIGNATURE_TAGS,
         headersConfigFile,
         excludeTags: riskExcludeTags(riskTags),
@@ -371,7 +373,7 @@ async function runNucleiPhases(
         templatesDir: env.nuclei.templatesDir,
         outputFile,
         rateLimit: site.nucleiRateLimit,
-        concurrency: env.nuclei.concurrency,
+        concurrency: limits.concurrency,
         tags,
         headersConfigFile,
         excludeTags: fullSignatureExcludeTags(riskExcludeTags(riskTags)),
@@ -425,7 +427,7 @@ async function runNucleiPhases(
         dastTemplatesDir: env.nuclei.dastTemplatesDir,
         outputFile,
         rateLimit: site.nucleiRateLimit,
-        concurrency: env.nuclei.concurrency,
+        concurrency: limits.concurrency,
         headersConfigFile,
       })
       const phase = await runNucleiPhase({
@@ -473,7 +475,7 @@ async function runNucleiPhases(
     )
 
   if (timedOut)
-    warnings.push(`nuclei was stopped after ${env.nuclei.maxMinutes} min; results are partial`)
+    warnings.push(`nuclei was stopped after ${limits.maxMinutes.minutes} min; results are partial`)
   // Error rate over both GET phases: they hit the same targets, so one
   // rate-limit verdict covers them.
   const req = Number(getStats?.requests ?? 0) + Number(dastStats?.requests ?? 0)
@@ -506,7 +508,7 @@ async function runNucleiPhases(
       ...(docs.length > 0 ? { openapiDocCount: docs.length, openapiDocsRun } : {}),
       tags,
       rateLimit: site.nucleiRateLimit,
-      concurrency: env.nuclei.concurrency,
+      concurrency: limits.concurrency,
       templatesDir: env.nuclei.templatesDir,
       activeScan,
       riskTags,

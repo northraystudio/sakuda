@@ -524,6 +524,26 @@ describe('runNuclei active injection checks (allowMutatingRequests)', () => {
     expect(out.meta.concurrency).toBe(8)
   })
 
+  it("the site's nuclei limits override the env ones for every phase and the budget (#10)", async () => {
+    const { out, argv, dastArgv } = await run(
+      baseSite({
+        allowMutatingRequests: true,
+        nucleiPaths: '/search?q=',
+        nucleiConcurrency: 3,
+        nucleiMaxMinutes: 120,
+      }),
+      FAKE_RECORD_ARGS,
+      { SAKUDA_NUCLEI_CONCURRENCY: '8', SAKUDA_NUCLEI_MAX_MINUTES: '30' },
+    )
+    const cValue = (a: string[]) => a[a.indexOf('-c') + 1]
+    expect(cValue(argv)).toBe('3')
+    expect(cValue(dastArgv!)).toBe('3')
+    expect(out.meta.concurrency).toBe(3)
+    expect(out.meta.timeBudget).toMatchObject({
+      parts: expect.arrayContaining([{ label: 'nuclei (site setting)', minutes: 120 }]),
+    })
+  })
+
   it('opts a risk group back in: both GET phases drop it from -exclude-tags and gain its extra -tags', async () => {
     const { argv, dastArgv } = await run(
       baseSite({ allowMutatingRequests: true, nucleiEnabledRiskTags: ['fuzz'] }),
