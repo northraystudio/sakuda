@@ -29,6 +29,8 @@ const SITE_FIELD_KEYS = [
   'crawlScopePaths',
   'excludePaths',
   'nucleiRateLimit',
+  'nucleiMaxMinutes',
+  'nucleiConcurrency',
   'zapApiMaxMinutes',
   'zapFeSpiderMaxMinutes',
   'nonLocalConfirmed',

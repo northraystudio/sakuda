@@ -1,13 +1,16 @@
 import type { Engine, EngineTimeBudget, EngineTimeBudgetPart, SitePublic } from '#shared/types/api'
 import type { Env } from '../config/env'
+import { effectiveNucleiMaxMinutes, type NucleiLimitsSite } from './nucleiLimits'
 
 /** ZAP passive-scan tail every ZAP run waits for after its active work. */
 export const ZAP_PASSIVE_MAX_MINUTES = 5
 /** Wall-clock budget for the whole zap-fe DOM XSS probe. */
 export const DOM_XSS_PROBE_BUDGET_MINUTES = 10
 
-export type TimeBudgetSite = Pick<SitePublic, 'zapApiMaxMinutes' | 'zapFeSpiderMaxMinutes'>
+export type TimeBudgetSite = Pick<SitePublic, 'zapApiMaxMinutes' | 'zapFeSpiderMaxMinutes'> &
+  NucleiLimitsSite
 export interface TimeBudgetEnv {
+  /** SAKUDA_NUCLEI_MAX_MINUTES; a site's `nucleiMaxMinutes` overrides it. */
   nucleiMaxMinutes: number
   dalfoxMaxMinutes: number
   /** The httpx liveness probe that runs ahead of nuclei's phases (#91). */
@@ -40,8 +43,9 @@ export function timeBudgetEnv(
  * so what the page shows as the limit is exactly what the runner enforced.
  *
  * - nuclei: the httpx liveness probe's cap (`SAKUDA_HTTPX_MAX_MINUTES`) plus
- *   its own deadline, `SAKUDA_NUCLEI_MAX_MINUTES`, shared by every phase; no
- *   grace, the engine stops itself.
+ *   its own deadline — the site's `nucleiMaxMinutes`, else
+ *   `SAKUDA_NUCLEI_MAX_MINUTES` — shared by every phase; no grace, the engine
+ *   stops itself.
  * - zap-api: the site's active-scan cap + the passive tail + the grace ZAP
  *   gets to shut down.
  * - zap-fe: two spider runs (traditional + ajax) + the active scan under
@@ -56,12 +60,20 @@ export function engineTimeBudget(
 ): EngineTimeBudget {
   const parts: EngineTimeBudgetPart[] = []
   switch (engine) {
-    case 'nuclei':
+    case 'nuclei': {
+      const nuclei = effectiveNucleiMaxMinutes(site, env.nucleiMaxMinutes)
       parts.push(
         { label: 'httpx probe (SAKUDA_HTTPX_MAX_MINUTES)', minutes: env.httpxMaxMinutes },
-        { label: 'nuclei (SAKUDA_NUCLEI_MAX_MINUTES)', minutes: env.nucleiMaxMinutes },
+        {
+          label:
+            nuclei.source === 'site'
+              ? 'nuclei (site setting)'
+              : 'nuclei (SAKUDA_NUCLEI_MAX_MINUTES)',
+          minutes: nuclei.minutes,
+        },
       )
       break
+    }
     case 'zap-api':
       parts.push(
         { label: 'active scan', minutes: site.zapApiMaxMinutes },

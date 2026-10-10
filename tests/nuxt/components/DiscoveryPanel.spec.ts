@@ -26,6 +26,8 @@ function siteFixture(overrides: Partial<SitePublic> = {}): SitePublic {
     crawlScopePaths: '',
     excludePaths: '',
     nucleiRateLimit: 50,
+    nucleiMaxMinutes: null,
+    nucleiConcurrency: null,
     zapApiMaxMinutes: 45,
     zapFeSpiderMaxMinutes: 5,
     nonLocalConfirmed: true,

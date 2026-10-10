@@ -50,6 +50,13 @@
       "when": 1788837545068,
       "tag": "0006_blue_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791605317709,
+      "tag": "0007_nuclei_site_limits",
+      "breakpoints": true
     }
   ]
 }

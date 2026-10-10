@@ -29,6 +29,10 @@ export interface SitePublic {
   crawlScopePaths: string
   excludePaths: string
   nucleiRateLimit: number
+  /** null → SAKUDA_NUCLEI_MAX_MINUTES (see server/domain/nucleiLimits). */
+  nucleiMaxMinutes: number | null
+  /** null → SAKUDA_NUCLEI_CONCURRENCY (see server/domain/nucleiLimits). */
+  nucleiConcurrency: number | null
   zapApiMaxMinutes: number
   zapFeSpiderMaxMinutes: number
   nonLocalConfirmed: boolean

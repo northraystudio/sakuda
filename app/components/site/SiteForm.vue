@@ -45,6 +45,9 @@ const form = reactive({
   crawlScopePaths: props.initial?.crawlScopePaths ?? '',
   excludePaths: props.initial?.excludePaths ?? '',
   nucleiRateLimit: props.initial?.nucleiRateLimit ?? 50,
+  // null = no site override: the server falls back to its env value.
+  nucleiMaxMinutes: props.initial?.nucleiMaxMinutes ?? null,
+  nucleiConcurrency: props.initial?.nucleiConcurrency ?? null,
   zapApiMaxMinutes: props.initial?.zapApiMaxMinutes ?? 45,
   zapFeSpiderMaxMinutes: props.initial?.zapFeSpiderMaxMinutes ?? 5,
   nonLocalConfirmed: props.initial?.nonLocalConfirmed ?? false,
@@ -234,6 +237,12 @@ function toFiniteNumber(value: number | string, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+/** An optional number box: `v-model.number` yields '' once cleared, which
+ * means "no override" (null), not a fallback number. */
+function toOptionalNumber(value: number | string | null): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
 function buildPayload(): SiteUpdateInput {
   const base = {
     name: form.name,
@@ -251,6 +260,8 @@ function buildPayload(): SiteUpdateInput {
     crawlScopePaths: form.crawlScopePaths,
     excludePaths: form.excludePaths,
     nucleiRateLimit: toFiniteNumber(form.nucleiRateLimit, 50),
+    nucleiMaxMinutes: toOptionalNumber(form.nucleiMaxMinutes),
+    nucleiConcurrency: toOptionalNumber(form.nucleiConcurrency),
     zapApiMaxMinutes: toFiniteNumber(form.zapApiMaxMinutes, 45),
     zapFeSpiderMaxMinutes: toFiniteNumber(form.zapFeSpiderMaxMinutes, 5),
     nonLocalConfirmed: form.nonLocalConfirmed,
@@ -727,6 +738,43 @@ function handleSubmit() {
           max="1000"
           class="input-pill"
         />
+      </div>
+
+      <div class="flex flex-col gap-2 sm:max-w-80">
+        <label for="site-nuclei-max-minutes" class="text-caption-md font-medium text-ink"
+          >Max minutes <span class="text-mute">(optional)</span></label
+        >
+        <input
+          id="site-nuclei-max-minutes"
+          v-model.number="form.nucleiMaxMinutes"
+          data-testid="nuclei-max-minutes"
+          type="number"
+          min="1"
+          max="600"
+          class="input-pill"
+        />
+        <p class="text-caption-sm text-mute">
+          Shared by every nuclei phase. Empty uses the server's SAKUDA_NUCLEI_MAX_MINUTES (default
+          60).
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-2 sm:max-w-80">
+        <label for="site-nuclei-concurrency" class="text-caption-md font-medium text-ink"
+          >Concurrency <span class="text-mute">(optional)</span></label
+        >
+        <input
+          id="site-nuclei-concurrency"
+          v-model.number="form.nucleiConcurrency"
+          data-testid="nuclei-concurrency"
+          type="number"
+          min="1"
+          max="100"
+          class="input-pill"
+        />
+        <p class="text-caption-sm text-mute">
+          Templates run in parallel. Empty uses the server's SAKUDA_NUCLEI_CONCURRENCY (default 25).
+        </p>
       </div>
 
       <div class="flex flex-col gap-2">
