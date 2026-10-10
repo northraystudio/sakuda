@@ -23,6 +23,8 @@ const editSite: SitePublic = {
   crawlScopePaths: '',
   excludePaths: '',
   nucleiRateLimit: 50,
+  nucleiMaxMinutes: null,
+  nucleiConcurrency: null,
   zapApiMaxMinutes: 45,
   zapFeSpiderMaxMinutes: 5,
   nonLocalConfirmed: true,
@@ -176,6 +178,42 @@ describe('SiteForm', () => {
     expect(payload.nucleiRateLimit).toBe(50)
     expect(payload.zapApiMaxMinutes).toBe(45)
     expect(payload.zapFeSpiderMaxMinutes).toBe(5)
+  })
+
+  // #10: optional overrides — empty means "use the server's env value".
+  it('submits the nuclei limit overrides as null when left empty', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null },
+    })
+    await wrapper.find('[data-testid="name"]').setValue('Example')
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+
+    const raw = wrapper.emitted('submit')?.[0]?.[0] as Record<string, unknown> // raw payload, pre-schema
+    expect(raw.nucleiMaxMinutes).toBeNull()
+    expect(raw.nucleiConcurrency).toBeNull()
+  })
+
+  it('edit mode shows the saved nuclei limits, submits edits, and clears to null', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: {
+        initial: { ...editSite, nucleiMaxMinutes: 240, nucleiConcurrency: 10 },
+        submitting: false,
+        errorMessage: null,
+      },
+    })
+    const minutes = () => wrapper.find('[data-testid="nuclei-max-minutes"]')
+    const concurrency = () => wrapper.find('[data-testid="nuclei-concurrency"]')
+    expect((minutes().element as HTMLInputElement).value).toBe('240')
+    expect((concurrency().element as HTMLInputElement).value).toBe('10')
+
+    await minutes().setValue('90')
+    await concurrency().setValue('')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+
+    const payload = emittedUpdate(wrapper)
+    expect(payload.nucleiMaxMinutes).toBe(90)
+    expect(payload.nucleiConcurrency).toBeNull()
   })
 
   // One site field, two boxes: zap-fe's active scan spends the same budget as

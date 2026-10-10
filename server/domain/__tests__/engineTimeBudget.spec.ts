@@ -30,6 +30,19 @@ describe('engineTimeBudget (#84)', () => {
     )
   })
 
+  it("nuclei: the site's nucleiMaxMinutes overrides the env cap and says so (#10)", () => {
+    expect(engineTimeBudget('nuclei', { ...site, nucleiMaxMinutes: 240 }, env, off)).toEqual({
+      parts: [
+        { label: 'httpx probe (SAKUDA_HTTPX_MAX_MINUTES)', minutes: 5 },
+        { label: 'nuclei (site setting)', minutes: 240 },
+      ],
+      totalMinutes: 245,
+    })
+    expect(
+      engineTimeBudget('nuclei', { ...site, nucleiMaxMinutes: null }, env, off).totalMinutes,
+    ).toBe(65)
+  })
+
   it('zap-api: active cap + passive tail + grace — the timeout zapApi enforced before #84', () => {
     const b = engineTimeBudget('zap-api', site, env, { activeScan: true, domXssProbe: false })
     expect(b.parts.map((p) => p.minutes)).toEqual([45, ZAP_PASSIVE_MAX_MINUTES, 10])

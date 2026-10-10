@@ -23,12 +23,43 @@ describe('SiteInputSchema', () => {
       discoverySeedPaths: '',
       excludePaths: '',
       nucleiRateLimit: 50,
+      nucleiMaxMinutes: null,
+      nucleiConcurrency: null,
       zapApiMaxMinutes: 45,
       zapFeSpiderMaxMinutes: 5,
       nonLocalConfirmed: false,
       allowMutatingRequests: false,
       nucleiEnabledRiskTags: [],
     })
+  })
+
+  it('accepts nuclei limit overrides in range, and null to clear them (#10)', () => {
+    const ok = SiteInputSchema.safeParse({
+      ...minimal,
+      nucleiMaxMinutes: 600,
+      nucleiConcurrency: 1,
+    })
+    expect(ok.success && [ok.data.nucleiMaxMinutes, ok.data.nucleiConcurrency]).toEqual([600, 1])
+    const cleared = SiteUpdateSchema.safeParse({
+      ...minimal,
+      nucleiMaxMinutes: null,
+      nucleiConcurrency: null,
+    })
+    expect(cleared.success).toBe(true)
+  })
+
+  it.each([
+    ['nucleiMaxMinutes', 0],
+    ['nucleiMaxMinutes', -5],
+    ['nucleiMaxMinutes', 601],
+    ['nucleiMaxMinutes', 1.5],
+    ['nucleiMaxMinutes', '60'],
+    ['nucleiConcurrency', 0],
+    ['nucleiConcurrency', 101],
+    ['nucleiConcurrency', 'many'],
+  ])('rejects %s = %j with an issue on that field (#10)', (field, value) => {
+    const issues = issuesFor({ ...minimal, [field]: value })
+    expect(issues.map((i) => i.path.join('.'))).toContain(field)
   })
 
   it('defaults nucleiEnabledRiskTags to [] and rejects an unknown risk tag', () => {
