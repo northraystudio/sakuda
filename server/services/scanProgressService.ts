@@ -113,7 +113,14 @@ async function newestNucleiLog(workDir: string): Promise<{ path: string; stage: 
     const stage = nucleiStageOf(name)
     if (!stage) continue
     const path = join(workDir, name)
-    const { mtimeMs } = await stat(path)
+    let mtimeMs: number
+    try {
+      ;({ mtimeMs } = await stat(path))
+    } catch (e) {
+      // as: see readTail. A log removed since readdir is simply not a candidate.
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') continue
+      throw e
+    }
     if (!newest || mtimeMs > newest.mtimeMs) newest = { path, stage, mtimeMs }
   }
   return newest
