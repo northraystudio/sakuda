@@ -110,6 +110,10 @@ typography:
     fontWeight: 500
     lineHeight: 1.75
     letterSpacing: 0
+  mono-terminal:
+    fontFamily: system monospace
+    fontWeight: 400
+    letterSpacing: 0
 
 rounded:
   none: 0px
@@ -328,6 +332,7 @@ These appear sparingly — almost exclusively as small chip backgrounds, swatch 
 - **Helvetica Now Text** (body and links) — long-form body and underlined inline links.
 - **Neue Frutiger Arabic** — RTL pairing for Arabic locales at `{typography.heading-lg}` and caption sizes.
 - **Helvetica Neue 9px** — legal-fine-print utility row only (`{typography.utility-xs}`).
+- **System monospace** (`{typography.mono-terminal}`) — terminal-style readouts only (the scan-progress visualizer's log and stage labels); never body or UI chrome. No webfont: the platform's own mono stack (`ui-monospace`, SF Mono, Menlo, Consolas).
 
 When substituting on systems without proprietary Nike fonts: pair **Inter** (Display 700 for body chrome, Display 500 for buttons) with **Bebas Neue** or **Anton** at 96px/0.9 line-height for the campaign headline tier. Tighten letter-spacing slightly (-0.5%) on the substitute to approximate Futura ND's optical weight.
 

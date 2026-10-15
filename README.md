@@ -28,6 +28,13 @@ to crawl again until the site changes.
 MVP scope: sites → scans → per-engine reports. See
 [Not in this MVP](#not-in-this-mvp) for what's deliberately out.
 
+**Live scan progress** — while a scan runs, each engine on the left takes its
+turn attacking the target on the right: its defenses break as the engines
+progress, every new finding flashes on the target, and a terminal readout
+shows the current stage:
+
+![sakuda scan in progress: engines stacked on the left (ZAP Frontend and Dalfox done with their finding counts, Nuclei queued) sending packets at the target site's server on the right, whose defense rings are partly broken, above a terminal log of the latest stages](docs/images/scanning.png)
+
 **Scan report** — severity summary, the diff against the previous scan, and a
 per-engine panel with its status, run time and time limit:
 

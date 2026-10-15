@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { Engine, EngineRunView } from '#shared/types/api'
+import type { Engine, EngineProgressView, EngineRunView } from '#shared/types/api'
 import EngineRunTiming from './EngineRunTiming.vue'
+import IntrusionProgress from './IntrusionProgress.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -10,8 +11,22 @@ const props = withDefaults(
     engines?: Engine[]
     engineRuns?: EngineRunView[]
     serverNow?: string | null
+    /** The scanned site's name, shown as the visualizer's target. */
+    siteName?: string | null
+    /** The running engine's live progress; null when unknown. */
+    progress?: EngineProgressView | null
+    /** The live-progress poll failed — the visualizer is on time estimates. */
+    progressUnavailable?: boolean
   }>(),
-  { startedAt: null, engines: () => [], engineRuns: () => [], serverNow: null },
+  {
+    startedAt: null,
+    engines: () => [],
+    engineRuns: () => [],
+    serverNow: null,
+    siteName: null,
+    progress: null,
+    progressUnavailable: false,
+  },
 )
 
 // Same server-anchored, self-ticking clock as the engine rows, so the scan
@@ -38,6 +53,16 @@ const engineRows = computed(() =>
     <p class="text-body-md text-sale">Scan failed. Please try again later.</p>
   </div>
   <div v-else class="card">
+    <IntrusionProgress
+      class="mb-4"
+      :status="status"
+      :started-at="startedAt"
+      :engines="engines"
+      :engine-runs="engineRuns"
+      :progress="progress"
+      :server-now="serverNow"
+      :target-name="siteName"
+    />
     <p class="font-display text-heading-md uppercase">{{ label }}</p>
     <p v-if="elapsed" data-testid="scan-elapsed" class="mt-2 text-caption-md text-mute">
       Elapsed {{ elapsed }}
@@ -47,6 +72,13 @@ const engineRows = computed(() =>
         <EngineRunTiming :engine="row.engine" :run="row.run" :server-now="serverNow" />
       </li>
     </ul>
+    <p
+      v-if="progressUnavailable"
+      data-testid="progress-unavailable"
+      class="mt-2 text-caption-sm text-mute"
+    >
+      Live engine progress is unavailable; the animation follows elapsed time instead.
+    </p>
     <p class="mt-2 text-caption-sm text-mute">
       This can take a few minutes depending on target size. This page updates automatically.
     </p>

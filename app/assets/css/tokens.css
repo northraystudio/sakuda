@@ -55,5 +55,7 @@
   --text-utility-xs--line-height: 1.75;
   --font-display: 'Bebas Neue', 'Inter', sans-serif; /* substitute for Nike Futura ND */
   --font-body: 'Inter', system-ui, sans-serif; /* substitute for Helvetica Now */
+  --font-mono:
+    ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; /* terminal readouts only */
   --container-page: 1440px;
 }
