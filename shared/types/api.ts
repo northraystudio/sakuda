@@ -140,6 +140,25 @@ export interface ScanDetail extends ScanSummary {
    * negative or inflated duration. */
   now: string
 }
+/** What the running engine has reported about itself so far, parsed from its
+ * own progress output. Only numbers and allowlisted stage names — never a raw
+ * log line, which can carry target URLs or injected header values. */
+export interface EngineProgressView {
+  engine: Engine
+  /** Percent (0–100) of the current phase's planned work; null when the
+   * engine does not report one. */
+  percent: number | null
+  /** Matches reported so far in the current phase; null when unknown. */
+  matched: number | null
+  /** The current phase / job (e.g. `signature`, `activeScan`); null when unknown. */
+  stage: string | null
+}
+export interface ScanProgressView {
+  scanId: string
+  status: ScanStatus
+  /** null while no engine is running (queued, between engines, finished). */
+  progress: EngineProgressView | null
+}
 export interface HistoryPoint {
   scanId: string
   createdAt: string

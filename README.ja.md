@@ -27,6 +27,12 @@ DOM XSS）でスキャンを実行し、結果を UI で閲覧します。**デ�
 MVP のスコープ: サイト → スキャン → エンジン別レポート。意図的に外したものは
 [この MVP に含まれないもの](#この-mvp-に含まれないもの)を参照。
 
+**スキャン中の進捗表示** — スキャン中は、左に並んだエンジンが順番に右のターゲットへ
+侵入を試みます。エンジンの進捗に応じてターゲットの防御リングが砕け、新しい検出が
+出るたびにターゲットが光り、ターミナル風の表示に現在のステージが流れます:
+
+![sakuda scan in progress: engines stacked on the left (ZAP Frontend and Dalfox done with their finding counts, Nuclei queued) sending packets at the target site's server on the right, whose defense rings are partly broken, above a terminal log of the latest stages](docs/images/scanning.png)
+
 **スキャンレポート** — 深刻度サマリ、前回スキャンとの差分、ステータス・実行時間・
 制限時間を示すエンジン別パネル:
 

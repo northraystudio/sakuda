@@ -3,7 +3,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { nextTick, ref } from 'vue'
 import ScanPage from '~/pages/scans/[id].vue'
 import { engineRunFixture, findingFixture, scanDetailFixture } from '../helpers/fixtures'
-import type { ScanDetail } from '#shared/types/api'
+import type { ScanDetail, ScanProgressView } from '#shared/types/api'
 
 const polling = {
   state: ref<ScanDetail | null>(null),
@@ -14,6 +14,15 @@ const polling = {
 }
 
 mockNuxtImport('useScanPolling', () => () => polling)
+
+const progressPolling = {
+  state: ref<ScanProgressView | null>(null),
+  error: ref<string | null>(null),
+  done: ref(false),
+  start: vi.fn(),
+  stop: vi.fn(),
+}
+mockNuxtImport('useScanProgressPolling', () => () => progressPolling)
 
 // The header switcher reads the active site from useActiveSiteId(); mock it so
 // the page's publish/clear watcher can be asserted directly.
@@ -36,6 +45,10 @@ describe('pages/scans/[id]', () => {
     polling.state.value = null
     polling.done.value = false
     polling.error.value = null
+    progressPolling.start.mockReset()
+    progressPolling.stop.mockReset()
+    progressPolling.state.value = null
+    progressPolling.error.value = null
     activeSiteId.value = null
   })
 
@@ -139,5 +152,57 @@ describe('pages/scans/[id]', () => {
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('zap-fe crashed')
+  })
+
+  describe('intrusion visualizer', () => {
+    it('runs the live-progress poll only once the scan is running, and stops it at the end', async () => {
+      polling.state.value = scanDetailFixture({ status: 'queued' })
+      await mountPage()
+      expect(progressPolling.start).not.toHaveBeenCalled()
+
+      polling.state.value = scanDetailFixture({ status: 'running' })
+      await nextTick()
+      expect(progressPolling.start).toHaveBeenCalledTimes(1)
+
+      polling.state.value = scanDetailFixture({ status: 'done' })
+      await nextTick()
+      expect(progressPolling.stop).toHaveBeenCalled()
+    })
+
+    it('says so when live progress is unavailable', async () => {
+      polling.state.value = scanDetailFixture({ status: 'running' })
+      progressPolling.error.value = 'boom'
+      const wrapper = await mountPage()
+      expect(wrapper.find('[data-testid="intrusion"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="progress-unavailable"]').exists()).toBe(true)
+    })
+
+    it('plays SCAN COMPLETE above the report when the scan finishes while watched, until closed', async () => {
+      polling.state.value = scanDetailFixture({ status: 'running' })
+      const wrapper = await mountPage()
+      polling.state.value = scanDetailFixture({ status: 'done' })
+      await nextTick()
+
+      expect(wrapper.find('[data-testid="scan-finale"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="intrusion-outcome"]').text()).toBe('Scan complete')
+      expect(wrapper.findAll('[data-testid="engine-run-panel"]').length).toBeGreaterThan(0)
+
+      await wrapper.find('[data-testid="scan-finale"] button').trigger('click')
+      expect(wrapper.find('[data-testid="scan-finale"]').exists()).toBe(false)
+    })
+
+    it('plays CONNECTION LOST when the watched scan fails', async () => {
+      polling.state.value = scanDetailFixture({ status: 'running' })
+      const wrapper = await mountPage()
+      polling.state.value = scanDetailFixture({ status: 'failed' })
+      await nextTick()
+      expect(wrapper.find('[data-testid="intrusion-outcome"]').text()).toBe('Connection lost')
+    })
+
+    it('opening an already finished scan shows no finale', async () => {
+      polling.state.value = scanDetailFixture({ status: 'done' })
+      const wrapper = await mountPage()
+      expect(wrapper.find('[data-testid="scan-finale"]').exists()).toBe(false)
+    })
   })
 })
