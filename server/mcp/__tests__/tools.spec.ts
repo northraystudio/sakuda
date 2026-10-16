@@ -4,10 +4,10 @@ import { randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
 import { openDatabase } from '../../db/client'
-import { engineRuns, findings, scans } from '../../db/schema'
+import { engineRuns, findings, scans, sites } from '../../db/schema'
 import { createSiteCipher } from '../../domain/headerCipher'
 import { createScan } from '../../services/scanService'
-import { createSite, type SiteServiceDeps } from '../../services/siteService'
+import { createSite, loadSiteWithHeaders, type SiteServiceDeps } from '../../services/siteService'
 import { createSakudaMcpServer, type McpRequestContext } from '../tools'
 import { SiteInputSchema } from '#shared/schemas/site'
 
@@ -115,17 +115,24 @@ function seed() {
 }
 
 describe('sakuda MCP tools', () => {
-  it('lists the five read-only tools', async () => {
+  it('lists the five read-only tools and the four write tools', async () => {
     const c = await connect()
     const { tools } = await c.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual([
+    const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name)
+    const writes = tools.filter((t) => t.annotations?.readOnlyHint === false).map((t) => t.name)
+    expect(readOnly.sort()).toEqual([
       'get_scan',
       'get_site',
       'list_findings',
       'list_scans',
       'list_sites',
     ])
-    expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true)
+    expect(writes.sort()).toEqual([
+      'add_targets',
+      'set_finding_triage',
+      'set_openapi',
+      'start_scan',
+    ])
   })
 
   it('returns sites and scans without any secret value', async () => {
@@ -214,5 +221,198 @@ describe('sakuda MCP tools', () => {
       text: 'scan nope not found',
     })
     expect(await call(c, 'list_findings', { scanId: 'nope' })).toMatchObject({ isError: true })
+  })
+})
+
+describe('sakuda MCP write tools (#18)', () => {
+  function plainSite(input: Record<string, unknown> = {}) {
+    return createSite(
+      deps,
+      SiteInputSchema.parse({ name: 'shop', frontBaseUrl: 'http://localhost:3001/', ...input }),
+    )
+  }
+
+  describe('add_targets', () => {
+    it('appends lines and skips ones already saved, so re-sending is a no-op', async () => {
+      const site = plainSite({ nucleiPaths: '/' })
+      const c = await connect()
+      const first = await call(c, 'add_targets', {
+        siteId: site.id,
+        lines: ['/api/products', 'POST /api/login'],
+      })
+      expect(first.json).toMatchObject({ added: ['/api/products', 'POST /api/login'], skipped: [] })
+      const again = await call(c, 'add_targets', { siteId: site.id, lines: ['/api/products'] })
+      expect(again.json).toMatchObject({ added: [], skipped: ['/api/products'] })
+      expect(again.json.nucleiPaths).toBe(first.json.nucleiPaths)
+    })
+
+    it('rejects what the UI rejects, writing nothing', async () => {
+      const site = plainSite({ nucleiPaths: '/' })
+      const c = await connect()
+      const bad = await call(c, 'add_targets', { siteId: site.id, lines: ['/ok', 'no-slash'] })
+      expect(bad.isError).toBe(true)
+      expect(bad.text).toMatch(/^VALIDATION: invalid target line\(s\): no-slash/)
+      const apiLine = await call(c, 'add_targets', { siteId: site.id, lines: ['api:/x'] })
+      expect(apiLine.text).toBe('VALIDATION: api: lines require apiBaseUrl to be set on the site')
+      expect((await call(c, 'get_site', { siteId: site.id })).json.nucleiPaths).toBe('/')
+      expect(await call(c, 'add_targets', { siteId: 'nope', lines: ['/x'] })).toMatchObject({
+        isError: true,
+        text: 'SITE_NOT_FOUND: site nope not found',
+      })
+    })
+  })
+
+  describe('set_openapi', () => {
+    it('sets the URL or the JSON (clearing the other) and keeps settings and secrets', async () => {
+      const { site } = seed()
+      const c = await connect()
+      const url = await call(c, 'set_openapi', {
+        siteId: site.id,
+        openapiUrl: 'http://localhost:3001/openapi.json/',
+      })
+      expect(url.json).toEqual({
+        siteId: site.id,
+        openapiUrl: 'http://localhost:3001/openapi.json',
+        hasOpenapiJson: false,
+      })
+      const again = await call(c, 'set_openapi', {
+        siteId: site.id,
+        openapiUrl: 'http://localhost:3001/openapi.json',
+      })
+      expect(again.json).toEqual(url.json)
+
+      const json = await call(c, 'set_openapi', { siteId: site.id, openapiJson: '{"openapi":"3"}' })
+      expect(json.json).toEqual({ siteId: site.id, openapiUrl: null, hasOpenapiJson: true })
+
+      const stored = loadSiteWithHeaders(deps, site.id)
+      expect(stored?.headers).toEqual([{ name: 'Authorization', value: `Bearer ${TOKEN}` }])
+      expect(stored?.browserStorage).toEqual([
+        { kind: 'localStorage', name: 'token', value: STORAGE },
+      ])
+      expect(stored?.name).toBe('shop')
+    })
+
+    it('runs the same validation as the edit form', async () => {
+      const site = plainSite()
+      const c = await connect()
+      const set = (args: Record<string, unknown>) =>
+        call(c, 'set_openapi', { siteId: site.id, ...args })
+
+      expect((await set({})).text).toBe('VALIDATION: pass exactly one of openapiUrl or openapiJson')
+      expect((await set({ openapiUrl: 'http://localhost/a', openapiJson: '{}' })).text).toBe(
+        'VALIDATION: pass exactly one of openapiUrl or openapiJson',
+      )
+      expect((await set({ openapiUrl: 'ftp://localhost/a' })).text).toBe(
+        'VALIDATION: openapiUrl: must be an http(s) URL',
+      )
+      expect((await set({ openapiJson: '[1' })).text).toBe(
+        'VALIDATION: openapiJson: openapiJson must be a JSON object',
+      )
+      // An agent cannot confirm a non-local target on the user's behalf.
+      const nonLocal = await set({ openapiUrl: 'https://api.example.com/openapi.json' })
+      expect(nonLocal.isError).toBe(true)
+      expect(nonLocal.text).toContain('nonLocalConfirmed')
+      expect((await call(c, 'get_site', { siteId: site.id })).json.openapiUrl).toBeNull()
+      expect(
+        await call(c, 'set_openapi', { siteId: 'nope', openapiUrl: 'http://localhost/a' }),
+      ).toMatchObject({ isError: true, text: 'site nope not found' })
+    })
+  })
+
+  describe('start_scan', () => {
+    it('queues a scan through the same gates as the UI and returns refusals with a reason', async () => {
+      const site = plainSite()
+      const c = await connect()
+
+      const prereq = await call(c, 'start_scan', { siteId: site.id, engines: ['zap-api'] })
+      expect(prereq).toMatchObject({
+        isError: true,
+        text: 'ENGINE_PREREQ: zap-api requires openapiUrl or openapiJson',
+      })
+
+      const started = await call(c, 'start_scan', {
+        siteId: site.id,
+        engines: ['nuclei', 'nuclei'],
+      })
+      expect(started.json).toMatchObject({
+        siteId: site.id,
+        status: 'queued',
+        engines: ['nuclei'],
+        warnings: [],
+      })
+
+      expect(await call(c, 'start_scan', { siteId: site.id, engines: ['nuclei'] })).toMatchObject({
+        isError: true,
+        text: `SCAN_ACTIVE: site ${site.id} already has an active scan`,
+      })
+      expect(await call(c, 'start_scan', { siteId: 'nope', engines: ['nuclei'] })).toMatchObject({
+        isError: true,
+        text: 'SITE_NOT_FOUND: site nope not found',
+      })
+    })
+
+    it('refuses a non-local site that has not been confirmed', async () => {
+      const site = plainSite()
+      deps.db
+        .update(sites)
+        .set({ frontBaseUrl: 'https://shop.example.com' })
+        .where(eq(sites.id, site.id))
+        .run()
+      const c = await connect()
+      expect(await call(c, 'start_scan', { siteId: site.id, engines: ['nuclei'] })).toMatchObject({
+        isError: true,
+        text: 'NON_LOCAL_UNCONFIRMED: site targets a non-local host without confirmation',
+      })
+    })
+  })
+
+  describe('set_finding_triage', () => {
+    it('stores the verdict, shows it in reads and drops it from the new findings', async () => {
+      const { scan } = seed()
+      const c = await connect()
+      const set = await call(c, 'set_finding_triage', {
+        findingId: 'f1',
+        status: 'false-positive',
+        reason: 'the header is echoed by our own debug endpoint',
+      })
+      expect(set.json).toMatchObject({
+        fingerprint: 'fp-f1',
+        triage: {
+          status: 'false-positive',
+          reason: 'the header is echoed by our own debug endpoint',
+        },
+      })
+      const again = await call(c, 'set_finding_triage', {
+        findingId: 'f1',
+        status: 'false-positive',
+        reason: 'the header is echoed by our own debug endpoint',
+      })
+      expect(again.json).toEqual(set.json)
+
+      const onlyNew = await call(c, 'list_findings', { scanId: scan.id, onlyNew: true })
+      expect(onlyNew.json.findings.map((f: { id: string }) => f.id)).toEqual(['f2'])
+      const all = await call(c, 'list_findings', { scanId: scan.id })
+      expect(all.json.findings[0]).toMatchObject({
+        id: 'f1',
+        isNew: false,
+        triage: { status: 'false-positive' },
+      })
+    })
+
+    it('rejects an unknown finding, an unknown status and an empty reason', async () => {
+      seed()
+      const c = await connect()
+      expect(
+        await call(c, 'set_finding_triage', { findingId: 'nope', status: 'accepted', reason: 'r' }),
+      ).toMatchObject({ isError: true, text: 'FINDING_NOT_FOUND: finding nope not found' })
+      expect(
+        (await call(c, 'set_finding_triage', { findingId: 'f1', status: 'wontfix', reason: 'r' }))
+          .isError,
+      ).toBe(true)
+      expect(
+        (await call(c, 'set_finding_triage', { findingId: 'f1', status: 'accepted', reason: ' ' }))
+          .isError,
+      ).toBe(true)
+    })
   })
 })

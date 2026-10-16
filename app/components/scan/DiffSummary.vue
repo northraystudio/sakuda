@@ -24,6 +24,12 @@ defineProps<{ diff: ScanDiff | null }>()
             {{ diff.persistingCount }}
           </dd>
         </div>
+        <div v-if="diff.suppressedCount > 0">
+          <dt class="text-caption-sm text-mute">Not new (triaged)</dt>
+          <dd data-testid="diff-suppressed" class="text-heading-md text-mute">
+            {{ diff.suppressedCount }}
+          </dd>
+        </div>
         <div>
           <dt class="text-caption-sm text-mute">Resolved</dt>
           <dd data-testid="diff-resolved" class="text-heading-md text-success">

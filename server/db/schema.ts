@@ -1,4 +1,4 @@
-import { blob, index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { blob, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { BrowserStorageName } from '#shared/schemas/browserStorage'
 import type {
   DiscoveredUrl,
@@ -7,6 +7,7 @@ import type {
   RiskTag,
   SeverityCounts,
   SiteSnapshot,
+  TriageStatus,
 } from '#shared/types/api'
 
 export const sites = sqliteTable('sites', {
@@ -155,9 +156,29 @@ export const mcpApiKeys = sqliteTable('mcp_api_keys', {
   keyHash: text('key_hash').notNull().unique(),
   createdAt: text('created_at').notNull(),
 })
+/** An agent's verdict on a finding (#18), keyed by site and the same
+ * fingerprint the scan diff uses — so it carries over to every later scan of
+ * the site that reports the same finding. One row per pair: re-sending a
+ * verdict overwrites it. */
+export const findingTriage = sqliteTable(
+  'finding_triage',
+  {
+    siteId: text('site_id')
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    fingerprint: text('fingerprint').notNull(),
+    status: text('status', { enum: ['confirmed', 'false-positive', 'accepted'] })
+      .$type<TriageStatus>()
+      .notNull(),
+    reason: text('reason').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.siteId, t.fingerprint] })],
+)
 export type SiteRow = typeof sites.$inferSelect
 export type DiscoveryRow = typeof discoveries.$inferSelect
 export type ScanRow = typeof scans.$inferSelect
 export type EngineRunRow = typeof engineRuns.$inferSelect
 export type FindingRow = typeof findings.$inferSelect
 export type McpApiKeyRow = typeof mcpApiKeys.$inferSelect
+export type FindingTriageRow = typeof findingTriage.$inferSelect

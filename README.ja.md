@@ -413,9 +413,10 @@ ZAP frontend のシードパスにフォールバックします。
 
 ## MCP（エージェントからの利用）
 
-sakuda は読み取り専用の [MCP](https://modelcontextprotocol.io) エンドポイントを
+sakuda は [MCP](https://modelcontextprotocol.io) エンドポイントを
 `/mcp`（Streamable HTTP）で提供します。Claude Code や Claude Desktop などの
-エージェントから、サイト・スキャン・検出結果・差分を直接読めます。
+エージェントから、サイト・スキャン・検出結果・差分を直接読めます。さらに、ソースから
+読み取った対象パスや OpenAPI の設定、スキャン開始、検出結果ごとの判定を書き戻せます。
 
 ### API キー
 
@@ -480,7 +481,21 @@ Claude Desktop には、リモートのサーバーに固定のヘッダーを�
 
 ### ツールと秘密値
 
-ツール: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`。
+読み取りツール: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`。
+
+書き込みツールは UI と同じ検証・チェックを通ります。
+
+- `add_targets` — 対象行（`[METHOD] [api:]/path`）を追加。保存済みの行はスキップ。
+- `set_openapi` — `openapiUrl` か `openapiJson` を設定（もう一方は消える）。ローカル以外の
+  URL は、先に UI でサイトの非ローカル確認を済ませておく必要があります（エージェントからは確認できません）。
+- `start_scan` — スキャンをキューに入れる。拒否（非ローカルの未確認、`zap-api` に OpenAPI が無い、
+  スキャンや探索が実行中）はコードと理由を返します。能動チェックはサイトで有効にしている場合だけ動きます。
+- `set_finding_triage` — `confirmed` / `false-positive` / `accepted` を理由つきで記録。
+  判定はサイトと検出結果の指紋（スキャン差分と同じキー）ごとに保存され、`false-positive` /
+  `accepted` は以後のスキャンで「新規」に数えません。スキャン画面に判定と理由が出ます。
+  取り消すときは `confirmed` を設定します。判定の書き込みは MCP からのみです。
+
+同じ対象・OpenAPI・判定を再送しても結果は変わりません。
 
 - **秘密値は既定で伏せ字。** サイトに設定したヘッダ・Cookie・ブラウザストレージの値は
   `[SECRET:header:Authorization]` のような名前付きの伏せ字に置き換わります。

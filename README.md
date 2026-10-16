@@ -418,9 +418,11 @@ site-tree dump; katana's seeds, logs and JSONL under `katana/`) live under
 
 ## MCP (agent access)
 
-sakuda serves a read-only [MCP](https://modelcontextprotocol.io) endpoint at
-`/mcp` (Streamable HTTP), so an agent such as Claude Code or Claude Desktop can
-read sites, scans, findings and diffs directly.
+sakuda serves an [MCP](https://modelcontextprotocol.io) endpoint at `/mcp`
+(Streamable HTTP), so an agent such as Claude Code or Claude Desktop can read
+sites, scans, findings and diffs directly — and feed back what it learns from
+the source: target paths, the OpenAPI document, scan starts and its verdict on
+each finding.
 
 ### API keys
 
@@ -485,7 +487,24 @@ back to OAuth, which sakuda does not offer. Check that `SAKUDA_AUTH` starts with
 
 ### Tools and secrets
 
-Tools: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`.
+Read tools: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`.
+
+Write tools go through the same validation and checks as the UI:
+
+- `add_targets` — append target lines (`[METHOD] [api:]/path`); saved lines are skipped.
+- `set_openapi` — set `openapiUrl` or `openapiJson` (the other is cleared). A
+  non-local URL needs the site to be confirmed for non-local scanning in the UI
+  first; the agent cannot confirm it.
+- `start_scan` — queue a scan; a refusal (unconfirmed non-local target, missing
+  OpenAPI for `zap-api`, a scan or discovery already running) comes back with
+  its code and reason. Active checks run only if the site enables them.
+- `set_finding_triage` — record `confirmed`, `false-positive` or `accepted` with
+  a reason. The verdict is kept per site and finding fingerprint (the same key
+  the scan diff uses), so `false-positive` / `accepted` findings stop counting as
+  new in later scans; the scan page shows the verdict and reason. Set
+  `confirmed` to take a dismissal back. Verdicts are set over MCP only.
+
+Re-sending the same targets, OpenAPI or verdict changes nothing.
 
 - **Secrets are hidden by default.** Header, cookie and browser-storage values
   configured on the site are replaced with labeled placeholders such as
