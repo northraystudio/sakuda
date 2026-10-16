@@ -8,13 +8,9 @@ on:
     # and batched work cannot slip through on a base type nobody enumerated
     # (chore/**, docs/** …). Branch naming is <type>/<issue>-<summary> and the
     # set of types is open — see .claude/rules/maruda-cycle.md.
-    paths:
-      - '**/*.ts'
-      - '**/*.tsx'
-      - '**/*.js'
-      - '**/*.vue'
-      - 'package.json'
-      - '.github/workflows/ci.yml'
+    # No paths filter either: this job is a required check on main, and a
+    # filtered-out PR (docs only, .gitignore …) never reports it, so the PR
+    # stays blocked forever.
   # Direct pushes to the default / integration branch are scanned too
   # (bypass coverage). Feature and epic branches are covered via pull_request.
   push:

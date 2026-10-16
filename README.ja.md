@@ -2,6 +2,21 @@
 
 [English](README.md) | 日本語
 
+## 目次
+
+- [カバレッジと限界](#カバレッジと限界)
+- [クイックスタート (Docker)](#クイックスタート-docker)
+- [環境変数](#環境変数)
+- [ローカル開発](#ローカル開発)
+- [ディスク上のスキャンデータ](#ディスク上のスキャンデータ)
+- [スキャン — エンジンとアクティブ検査](#スキャン--エンジンとアクティブ検査)
+- [ディスカバリ — ターゲットリストを埋める](#ディスカバリ--ターゲットリストを埋める)
+- [MCP（エージェントからの利用）](#mcpエージェントからの利用)
+  - [API キー](#api-キー) · [Claude Code](#claude-code) ·
+    [Claude Desktop](#claude-desktop) · [ツールと秘密値](#ツールと秘密値)
+- [この MVP に含まれないもの](#この-mvp-に含まれないもの)
+- [ライセンス](#ライセンス)
+
 **sakuda** は **「さくっとDAST」** の略 — できるだけ少ないセットアップで、役に立つ
 セキュリティスキャンを回すことが狙いです。
 
@@ -399,19 +414,14 @@ ZAP frontend のシードパスにフォールバックします。
 ## MCP（エージェントからの利用）
 
 sakuda は読み取り専用の [MCP](https://modelcontextprotocol.io) エンドポイントを
-`/mcp`（Streamable HTTP）で提供します。Claude Code などのエージェントから、
-サイト・スキャン・検出結果・差分を直接読めます。
+`/mcp`（Streamable HTTP）で提供します。Claude Code や Claude Desktop などの
+エージェントから、サイト・スキャン・検出結果・差分を直接読めます。
 
-```bash
-claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp
-```
+### API キー
 
-**API キー。** sakuda の UI のヘッダーにある **MCP** を開き、クライアントごとにラベル
-（例: `claude-code`）を付けてキーを発行します。キーと、そのまま貼り付けられる
-`claude mcp remove sakuda -s local` と
-`claude mcp add ... --header "Authorization: Bearer <キー>"` の 2 行のコマンドは
-**一度だけ** 表示されます（remove は登録済みの `sakuda` を置き換えるためのもので、
-`claude mcp add` は同じ名前があると失敗します。初回は「見つからない」と出るだけです）。sakuda は sha256 のハッシュしか保存しないので、なくしたキーは
+sakuda の UI のヘッダーにある **MCP** を開き、クライアントごとにラベル
+（例: `claude-code`、`claude-desktop`）を付けてキーを発行します。キーは **一度だけ**
+表示されます。sakuda は sha256 のハッシュしか保存しないので、なくしたキーは
 取り出せません。再発行してください。再発行と失効は再起動なしで次のリクエストから効き、
 古いキーは 401 になります。
 
@@ -422,6 +432,53 @@ claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp
   `reveal` が使えるようになります。
 - `SAKUDA_MCP_API_KEY` は読まなくなりました。設定が残っていると起動時に警告を出して
   無視します。UI でキーを発行し、`.env` から削除してください。
+
+### Claude Code
+
+キーを発行した直後、MCP ページにそのまま貼り付けられる 2 行のコマンドが表示されます。
+
+```bash
+claude mcp remove sakuda -s local
+claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp --header "Authorization: Bearer <キー>"
+```
+
+remove は登録済みの `sakuda` を置き換えるためのもので、`claude mcp add` は同じ名前が
+あると失敗します。初回は「見つからない」と出るだけです。キーを 1 件も発行していない
+ときは `claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp` だけで
+つながります。
+
+### Claude Desktop
+
+Claude Desktop には、リモートのサーバーに固定のヘッダーを付ける設定がありません。そこで
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) で `/mcp` を中継します。
+`~/Library/Application Support/Claude/claude_desktop_config.json` に次のように書き
+（キーは `claude-desktop` などのラベルで別に発行）、Claude Desktop を再起動します。
+
+```json
+{
+  "mcpServers": {
+    "sakuda": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:3001/mcp",
+        "--header",
+        "Authorization:${SAKUDA_AUTH}"
+      ],
+      "env": { "SAKUDA_AUTH": "Bearer <キー>" }
+    }
+  }
+}
+```
+
+値を `env` に置くのは、引数の中の空白で分割される環境があるためです。ログに
+`/register` の `Dynamic Client Registration rejected (HTTP 404)` が出たら、キーが
+拒否されています。sakuda が 401 を返し、`mcp-remote` が OAuth に切り替えようとした
+結果で、sakuda は OAuth を提供していません。`SAKUDA_AUTH` が `Bearer ` で始まり、
+有効なキーが入っているか確かめてください。
+
+### ツールと秘密値
 
 ツール: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`。
 

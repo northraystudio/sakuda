@@ -2,6 +2,21 @@
 
 English | [日本語](README.ja.md)
 
+## Contents
+
+- [Coverage and limits](#coverage-and-limits)
+- [Quick start (Docker)](#quick-start-docker)
+- [Environment variables](#environment-variables)
+- [Local development](#local-development)
+- [Scan data on disk](#scan-data-on-disk)
+- [Scanning — engines and active checks](#scanning--engines-and-active-checks)
+- [Discovery — filling the target list](#discovery--filling-the-target-list)
+- [MCP (agent access)](#mcp-agent-access)
+  - [API keys](#api-keys) · [Claude Code](#claude-code) ·
+    [Claude Desktop](#claude-desktop) · [Tools and secrets](#tools-and-secrets)
+- [Not in this MVP](#not-in-this-mvp)
+- [License](#license)
+
 **sakuda** is short for **「さくっとDAST」** ("DAST, quickly") — the aim is a
 useful security scan with as little setup as possible.
 
@@ -404,21 +419,16 @@ site-tree dump; katana's seeds, logs and JSONL under `katana/`) live under
 ## MCP (agent access)
 
 sakuda serves a read-only [MCP](https://modelcontextprotocol.io) endpoint at
-`/mcp` (Streamable HTTP), so an agent such as Claude Code can read sites,
-scans, findings and diffs directly:
+`/mcp` (Streamable HTTP), so an agent such as Claude Code or Claude Desktop can
+read sites, scans, findings and diffs directly.
 
-```bash
-claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp
-```
+### API keys
 
-**API keys.** Open **MCP** in the header of the sakuda UI to issue a key with a
-label per client (e.g. `claude-code`). The key and ready-to-paste commands —
-`claude mcp remove sakuda -s local`, then
-`claude mcp add ... --header "Authorization: Bearer <key>"` — are shown
-**once** (the remove line replaces an existing `sakuda` entry, which
-`claude mcp add` would refuse; on a first setup it just reports nothing found); sakuda stores only a sha256 hash, so a lost key is reissued, not
-recovered. Reissue and revoke take effect on the next request, without a
-restart: the old key gets 401.
+Open **MCP** in the header of the sakuda UI to issue a key with a label per
+client (e.g. `claude-code`, `claude-desktop`). The key is shown **once**;
+sakuda stores only a sha256 hash, so a lost key is reissued, not recovered.
+Reissue and revoke take effect on the next request, without a restart: the old
+key gets 401.
 
 - **No key issued:** `/mcp` accepts loopback requests without auth, and secrets
   are always hidden. A request that does send a key is still checked, so a
@@ -427,6 +437,53 @@ restart: the old key gets 401.
   otherwise), and `reveal` becomes available.
 - `SAKUDA_MCP_API_KEY` is no longer read. If it is still set, sakuda logs a
   warning at boot and ignores it — issue a key in the UI and remove it from `.env`.
+
+### Claude Code
+
+Right after issuing a key, the MCP page shows two ready-to-paste lines:
+
+```bash
+claude mcp remove sakuda -s local
+claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp --header "Authorization: Bearer <key>"
+```
+
+The remove line replaces an existing `sakuda` entry, which `claude mcp add`
+would refuse; on a first setup it just reports that nothing was found. With no
+key issued, `claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp`
+is enough.
+
+### Claude Desktop
+
+Claude Desktop has no field for a static header on a remote server, so
+bridge `/mcp` through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) in
+`~/Library/Application Support/Claude/claude_desktop_config.json` (issue a
+separate key, e.g. labelled `claude-desktop`), then restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "sakuda": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:3001/mcp",
+        "--header",
+        "Authorization:${SAKUDA_AUTH}"
+      ],
+      "env": { "SAKUDA_AUTH": "Bearer <key>" }
+    }
+  }
+}
+```
+
+The value goes through `env` because a space inside an argument can be split on
+some systems. If the log shows `Dynamic Client Registration rejected (HTTP 404)`
+for `/register`, the key was rejected: sakuda answered 401 and `mcp-remote` fell
+back to OAuth, which sakuda does not offer. Check that `SAKUDA_AUTH` starts with
+`Bearer ` and holds a live key.
+
+### Tools and secrets
 
 Tools: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`.
 
