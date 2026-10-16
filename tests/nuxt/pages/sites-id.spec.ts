@@ -27,6 +27,7 @@ function siteFixture(overrides: Partial<SitePublic> = {}): SitePublic {
     headerNames: [],
     browserStorageNames: [],
     requestShapes: {},
+    secretExpiries: {},
     requiresConfirmation: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -144,5 +145,20 @@ describe('pages/sites/[id] — Start scan engine defaults', () => {
     // read-only: nothing here edits the list
     expect(wrapper.find('[data-testid="remove-target"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="save-targets"]').exists()).toBe(false)
+  })
+
+  it('warns next to Start scan about an expired auth secret and stays quiet otherwise (#17)', async () => {
+    registerSite(
+      siteFixture({
+        secretExpiries: {
+          'cookie:sid': '2000-01-01T00:00:00.000Z',
+          'header:Authorization': '2999-01-01T00:00:00.000Z',
+        },
+      }),
+    )
+    const wrapper = await mountSuspended(SiteDetailPage, { route: ROUTE })
+    const warnings = wrapper.findAll('[data-testid="auth-expiry-warning"]')
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]?.text()).toContain('cookie:sid expired at 2000-01-01T00:00:00.000Z')
   })
 })

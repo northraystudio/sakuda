@@ -13,6 +13,9 @@ process.env.SAKUDA_DATA_DIR = dataDir
 // Keep the queue from ever running a real scan — these tests only assert on
 // API-level state transitions (queued/409/etc.), not engine execution.
 process.env.SAKUDA_JOB_RUNNER = 'off'
+// Auth capture must never reach a real Chrome a developer may have running on
+// :9222 — point it at a port nothing listens on (#17).
+process.env.SAKUDA_CAPTURE_CDP_URL = 'http://127.0.0.1:9'
 
 await setup({ server: true })
 
@@ -70,7 +73,7 @@ describe('api e2e', () => {
     const res = await postJson(`/api/sites/${siteId}/scans`, { engines: ['nuclei'] })
     expect(res.status).toBe(202)
     const scan: unknown = await res.json()
-    expect(scan).toMatchObject({ status: 'queued' })
+    expect(scan).toMatchObject({ status: 'queued', warnings: [] })
     scanId = requireId(scan)
   })
 
@@ -269,5 +272,39 @@ describe('api e2e', () => {
     expect(res.status).toBe(422)
     const body: unknown = await res.json()
     expect(JSON.stringify(body)).toContain('nonLocalConfirmed')
+  })
+
+  it('GET /api/sites/:id/secrets returns values to loopback only, never cached (#17)', async () => {
+    const res = await fetch(`/api/sites/${siteId}/secrets`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect(await res.json()).toEqual({
+      headers: [{ name: 'Cookie', value: cookieValue }],
+      browserStorage: expect.any(Array),
+    })
+
+    // A foreign Host is covered by server/lib/__tests__/loopback.spec.ts — the
+    // test client cannot override Host.
+    const crossOrigin = await fetch(`/api/sites/${siteId}/secrets`, {
+      headers: { origin: 'https://evil.example' },
+    })
+    expect(crossOrigin.status).toBe(403)
+    expect(JSON.stringify(await crossOrigin.json())).not.toContain(cookieValue)
+  })
+
+  it('capture routes are loopback-only and report a missing capture browser as 503 (#17)', async () => {
+    const foreign = await fetch(`/api/sites/${siteId}/capture/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
+      body: '{}',
+    })
+    expect(foreign.status).toBe(403)
+
+    const start = await postJson(`/api/sites/${siteId}/capture/start`, {})
+    expect(start.status).toBe(503)
+    expect(JSON.stringify(await start.json())).toContain('make capture-browser')
+
+    const badId = await postJson(`/api/sites/${siteId}/capture`, { targetId: '../json/version' })
+    expect(badId.status).toBe(422)
   })
 })

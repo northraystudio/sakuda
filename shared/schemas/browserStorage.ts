@@ -46,10 +46,20 @@ export const BrowserStorageItemSchema = z
 /** One row of a site update: a missing `value` means "keep the stored value
  * for this (kind, name)" — the merge itself lives in `siteService.updateSite`. */
 export const BrowserStoragePatchSchema = z
-  .object({ kind: Kind, name: Name, value: Value.optional() })
+  .object({
+    kind: Kind,
+    name: Name,
+    value: Value.optional(),
+    /** Known expiry of a new value (a captured cookie's `expires`, #17). */
+    expiresAt: z.iso.datetime().optional(),
+  })
   .superRefine(refineCookieSyntax)
+  .refine((i) => i.expiresAt === undefined || i.value !== undefined, {
+    path: ['expiresAt'],
+    message: 'expiresAt requires a value',
+  })
 
-const BROWSER_STORAGE_MAX = 20
+export const BROWSER_STORAGE_MAX = 20
 
 /** (kind, name) pairs are matched exactly (case-sensitive) — the same rule the
  * update merge uses — so two rows with the same pair would be ambiguous. */

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import SiteForm from '~/components/site/SiteForm.vue'
 import { buttonElement, inputElement } from '../helpers/dom'
@@ -8,7 +9,7 @@ import {
   type SiteInput,
   type SiteUpdateInput,
 } from '#shared/schemas/site'
-import type { SitePublic } from '#shared/types/api'
+import type { CaptureResult, SitePublic, SiteSecrets } from '#shared/types/api'
 
 const editSite: SitePublic = {
   id: 'site-1',
@@ -33,6 +34,7 @@ const editSite: SitePublic = {
   headerNames: ['Authorization', 'X-Api-Key'],
   browserStorageNames: [],
   requestShapes: {},
+  secretExpiries: {},
   requiresConfirmation: true,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -746,6 +748,164 @@ describe('SiteForm', () => {
       await wrapper.find('[data-testid="discovery-seed-paths"]').setValue('/#/basket')
       expect(wrapper.find('[data-testid="discovery-start-error"]').exists()).toBe(false)
       expect(buttonElement(wrapper, '[data-testid="submit"]').disabled).toBe(false)
+    })
+  })
+
+  describe('show/hide toggle for stored values (#17)', () => {
+    const secrets: SiteSecrets = {
+      headers: [
+        { name: 'Authorization', value: 'Bearer stored-token' },
+        { name: 'X-Api-Key', value: 'stored-key' },
+      ],
+      browserStorage: [{ kind: 'localStorage', name: 'token', value: 'eyJ.stored' }],
+    }
+    const site = {
+      ...editSite,
+      browserStorageNames: [{ kind: 'localStorage' as const, name: 'token' }],
+    }
+
+    async function mountWith(loadSecrets: () => Promise<SiteSecrets>) {
+      return mountSuspended(SiteForm, {
+        props: { initial: site, submitting: false, errorMessage: null, loadSecrets },
+      })
+    }
+
+    it('does not fetch on load; the first reveal fetches once and shows the stored value as text', async () => {
+      const loadSecrets = vi.fn().mockResolvedValue(secrets)
+      const wrapper = await mountWith(loadSecrets)
+      expect(loadSecrets).not.toHaveBeenCalled()
+
+      await wrapper.find('[data-testid="reveal-header-0"]').trigger('click')
+      await flushPromises()
+      const value = wrapper.find('[data-testid="header-value-0"]')
+      expect(value.attributes('type')).toBe('text')
+      expect(inputElement(wrapper, '[data-testid="header-value-0"]').value).toBe(
+        'Bearer stored-token',
+      )
+      expect(wrapper.find('[data-testid="reveal-header-0"]').attributes('aria-pressed')).toBe(
+        'true',
+      )
+
+      await wrapper.find('[data-testid="reveal-storage-0"]').trigger('click')
+      await flushPromises()
+      expect(inputElement(wrapper, '[data-testid="storage-value-0"]').value).toBe('eyJ.stored')
+      expect(loadSecrets).toHaveBeenCalledTimes(1)
+    })
+
+    it('hiding switches back to a password input and keeps a typed value untouched', async () => {
+      const loadSecrets = vi.fn().mockResolvedValue(secrets)
+      const wrapper = await mountWith(loadSecrets)
+      await wrapper.find('[data-testid="header-value-1"]').setValue('typed-key')
+      await wrapper.find('[data-testid="reveal-header-1"]').trigger('click')
+      await flushPromises()
+      expect(inputElement(wrapper, '[data-testid="header-value-1"]').value).toBe('typed-key')
+      expect(loadSecrets).not.toHaveBeenCalled()
+
+      await wrapper.find('[data-testid="reveal-header-1"]').trigger('click')
+      expect(wrapper.find('[data-testid="header-value-1"]').attributes('type')).toBe('password')
+      expect(wrapper.find('[data-testid="reveal-header-1"]').attributes('aria-pressed')).toBe(
+        'false',
+      )
+    })
+
+    it('shows an error and stays hidden when loading fails', async () => {
+      const loadSecrets = vi.fn().mockRejectedValue(new Error('boom'))
+      const wrapper = await mountWith(loadSecrets)
+      await wrapper.find('[data-testid="reveal-header-0"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-testid="secrets-error"]').text()).toContain(
+        'Could not load stored values',
+      )
+      expect(wrapper.find('[data-testid="header-value-0"]').attributes('type')).toBe('password')
+    })
+  })
+
+  describe('auth capture (#17)', () => {
+    const TARGET = 'A1B2C3D4E5F60718293A4B5C6D7E8F90'
+    const result: CaptureResult = {
+      headers: [
+        { name: 'Authorization', value: 'Bearer captured', expiresAt: '2027-01-01T00:00:00.000Z' },
+        { name: 'Cookie', value: 'sid=s1' },
+      ],
+      browserStorage: [
+        { kind: 'cookie', name: 'sid', value: 's1', expiresAt: '2026-12-01T00:00:00.000Z' },
+      ],
+      skipped: [{ item: 'localStorage:big', reason: 'too long' }],
+    }
+
+    async function mountCapture(finish = vi.fn().mockResolvedValue(result)) {
+      const start = vi.fn().mockResolvedValue({ targetId: TARGET })
+      const wrapper = await mountSuspended(SiteForm, {
+        props: {
+          initial: editSite,
+          submitting: false,
+          errorMessage: null,
+          capture: { start, finish },
+        },
+      })
+      return { wrapper, start, finish }
+    }
+
+    it('has no capture panel without the capture prop (create form)', async () => {
+      const wrapper = await mountSuspended(SiteForm, {
+        props: { submitting: false, errorMessage: null },
+      })
+      expect(wrapper.find('[data-testid="capture-panel"]').exists()).toBe(false)
+    })
+
+    it('start → Capture fills matching rows, appends new ones, and lists what was skipped', async () => {
+      const { wrapper, start, finish } = await mountCapture()
+      expect(wrapper.find('[data-testid="capture-finish"]').exists()).toBe(false)
+      await wrapper.find('[data-testid="capture-start"]').trigger('click')
+      await flushPromises()
+      expect(start).toHaveBeenCalledOnce()
+      await wrapper.find('[data-testid="capture-finish"]').trigger('click')
+      await flushPromises()
+      expect(finish).toHaveBeenCalledWith(TARGET)
+
+      // stored "Authorization" row is filled in place; Cookie is appended
+      expect(inputElement(wrapper, '[data-testid="header-value-0"]').value).toBe('Bearer captured')
+      expect(inputElement(wrapper, '[data-testid="header-name-2"]').value).toBe('Cookie')
+      expect(inputElement(wrapper, '[data-testid="storage-name-0"]').value).toBe('sid')
+      expect(wrapper.find('[data-testid="header-expiry-0"]').text()).toContain('2027-01-01')
+      expect(wrapper.find('[data-testid="capture-skipped"]').text()).toContain('localStorage:big')
+      expect(wrapper.find('[data-testid="capture-finish"]').exists()).toBe(false)
+
+      await wrapper.find('[data-testid="site-form"]').trigger('submit')
+      const payload = emittedUpdate(wrapper)
+      expect(payload.headers).toEqual([
+        { name: 'Authorization', value: 'Bearer captured', expiresAt: '2027-01-01T00:00:00.000Z' },
+        { name: 'X-Api-Key' },
+        { name: 'Cookie', value: 'sid=s1' },
+      ])
+      expect(payload.browserStorage).toEqual([
+        { kind: 'cookie', name: 'sid', value: 's1', expiresAt: '2026-12-01T00:00:00.000Z' },
+      ])
+    })
+
+    it('drops the captured expiry once the value is edited by hand', async () => {
+      const { wrapper } = await mountCapture()
+      await wrapper.find('[data-testid="capture-start"]').trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-testid="capture-finish"]').trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-testid="header-value-0"]').setValue('Bearer typed')
+      await wrapper.find('[data-testid="site-form"]').trigger('submit')
+      expect(emittedUpdate(wrapper).headers?.[0]).toEqual({
+        name: 'Authorization',
+        value: 'Bearer typed',
+      })
+    })
+
+    it('shows the server error (e.g. Chrome not started) and keeps the rows untouched', async () => {
+      const finish = vi.fn().mockRejectedValue(new Error('capture browser not reachable'))
+      const { wrapper } = await mountCapture(finish)
+      await wrapper.find('[data-testid="capture-start"]').trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-testid="capture-finish"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-testid="capture-error"]').exists()).toBe(true)
+      expect(inputElement(wrapper, '[data-testid="header-value-0"]').value).toBe('')
     })
   })
 })

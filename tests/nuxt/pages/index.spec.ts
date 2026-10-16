@@ -27,6 +27,7 @@ function siteFixture(overrides: Partial<SiteListItem> = {}): SiteListItem {
     headerNames: [],
     browserStorageNames: [],
     requestShapes: {},
+    secretExpiries: {},
     requiresConfirmation: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

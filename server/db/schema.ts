@@ -45,6 +45,12 @@ export const sites = sqliteTable('sites', {
     .$type<Record<string, RequestShape>>()
     .notNull()
     .default({}),
+  /** Plaintext expiry (ISO) of header / storage secrets, keyed by
+   * `secretKey` (see server/domain/secretExpiry, #17). Not secret. */
+  secretExpiries: text('secret_expiries', { mode: 'json' })
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })

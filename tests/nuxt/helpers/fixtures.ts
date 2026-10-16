@@ -81,6 +81,7 @@ export function scanDetailFixture(overrides: Partial<ScanDetail> = {}): ScanDeta
       headerNames: [],
       browserStorageNames: [],
       requestShapes: {},
+      secretExpiries: {},
       requiresConfirmation: false,
     },
     engineRuns: [engineRunFixture()],

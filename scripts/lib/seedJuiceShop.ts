@@ -7,11 +7,17 @@ export const DEFAULT_JUICE_ORIGIN = 'http://127.0.0.1:4001'
 
 /** What `targets/juice-shop/site.json` holds: a site as `GET /api/sites/:id`
  * returns it, minus the per-instance parts (id, timestamps, header / storage
- * names, confirmation flag). No secret ever lives in it — the JWT is fetched
+ * names and expiries, confirmation flag). No secret ever lives in it — the JWT is fetched
  * per run. */
 export type SiteTemplate = Omit<
   SitePublic,
-  'id' | 'createdAt' | 'updatedAt' | 'headerNames' | 'browserStorageNames' | 'requiresConfirmation'
+  | 'id'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'headerNames'
+  | 'browserStorageNames'
+  | 'secretExpiries'
+  | 'requiresConfirmation'
 >
 
 /** The fields `POST /api/sites` and `PUT /api/sites/:id` accept, read off a

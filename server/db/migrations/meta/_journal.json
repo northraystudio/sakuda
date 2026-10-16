@@ -57,6 +57,13 @@
       "when": 1791605317709,
       "tag": "0007_nuclei_site_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792143738490,
+      "tag": "0008_secret_expiries",
+      "breakpoints": true
     }
   ]
 }

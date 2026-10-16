@@ -1,0 +1,1 @@
+ALTER TABLE `sites` ADD `secret_expiries` text DEFAULT '{}' NOT NULL;

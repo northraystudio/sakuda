@@ -1,4 +1,5 @@
-import type { BrowserStorageName } from '../schemas/browserStorage'
+import type { BrowserStorageItem, BrowserStorageName } from '../schemas/browserStorage'
+import type { Header } from '../schemas/headers'
 import type { TargetMethod } from '../utils/nucleiPaths'
 
 export type Engine = 'nuclei' | 'zap-api' | 'zap-fe' | 'dalfox'
@@ -47,12 +48,41 @@ export interface SitePublic {
   /** Value-free request-body shapes of approved non-GET targets, keyed by
    * `targetLineKey` (see #72). Consumed by the generated OpenAPI (#73). */
   requestShapes: Record<string, RequestShape>
+  /** Known expiry (ISO) of each auth secret, keyed `header:<name>` or
+   * `<kind>:<name>` — values stay write-only, expiry times are not secret. */
+  secretExpiries: Record<string, string>
   requiresConfirmation: boolean
   createdAt: string
   updatedAt: string
 }
 /** One approved non-GET target's saved request shape: the observed media type
  * (media type only, not a secret) plus the value-free body shape. */
+/** Decrypted header / browser-storage values of one site, returned only by
+ * the loopback-guarded `GET /api/sites/:id/secrets` (#17 — the edit form's
+ * show/hide toggle). */
+export interface SiteSecrets {
+  headers: Header[]
+  browserStorage: BrowserStorageItem[]
+}
+/** Auth capture (#17): the login tab opened in the host Chrome. */
+export interface CaptureStart {
+  targetId: string
+}
+/** One captured value, proposed as an edit-form row; `expiresAt` is a
+ * cookie's `expires` (or the earliest one, for the combined Cookie header). */
+export interface CapturedHeader extends Header {
+  expiresAt?: string
+}
+export interface CapturedStorageItem extends BrowserStorageItem {
+  expiresAt?: string
+}
+/** Rows proposed by a capture. Nothing is saved until the form is. */
+export interface CaptureResult {
+  headers: CapturedHeader[]
+  browserStorage: CapturedStorageItem[]
+  /** Values that could not become a row (invalid for the schema, over the limit). */
+  skipped: { item: string; reason: string }[]
+}
 export interface RequestShape {
   contentType: string | null
   bodyShape: BodyShape
@@ -70,6 +100,11 @@ export interface ScanSummary {
   finishedAt: string | null
   error: string | null
   counts: SeverityCounts
+}
+/** `POST /api/sites/:id/scans` answer: the queued scan plus non-blocking
+ * warnings (expired / soon-expiring auth secrets, #17). */
+export interface CreatedScan extends ScanSummary {
+  warnings: string[]
 }
 export interface SiteListItem extends SitePublic {
   lastScan: ScanSummary | null

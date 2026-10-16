@@ -2,7 +2,7 @@
 import DiscoveryPanel from '~/components/site/DiscoveryPanel.vue'
 import SiteForm from '~/components/site/SiteForm.vue'
 import type { SiteUpdateInput } from '#shared/schemas/site'
-import type { SitePublic } from '#shared/types/api'
+import type { CaptureResult, CaptureStart, SitePublic, SiteSecrets } from '#shared/types/api'
 
 const route = useRoute()
 // `route.params.id` is `string | string[]` generically; this route only has
@@ -36,6 +36,22 @@ async function handleSubmit(payload: SiteUpdateInput) {
   }
 }
 
+/** Lazily called by the form's show/hide toggle (#17); loopback-only route. */
+function loadSecrets(): Promise<SiteSecrets> {
+  return $fetch<SiteSecrets>(`/api/sites/${siteId}/secrets`)
+}
+
+/** Auth capture through the host Chrome (#17); loopback-only routes. */
+const capture = {
+  start: () =>
+    $fetch<CaptureStart>(`/api/sites/${siteId}/capture/start`, { method: 'POST', body: {} }),
+  finish: (targetId: string) =>
+    $fetch<CaptureResult>(`/api/sites/${siteId}/capture`, {
+      method: 'POST',
+      body: { targetId },
+    }),
+}
+
 async function handleDelete() {
   if (!window.confirm('Delete this site? This cannot be undone.')) return
   try {
@@ -60,6 +76,8 @@ async function handleDelete() {
         :submitting="submitting"
         :error-message="errorMessage"
         :cancel-to="`/sites/${siteId}`"
+        :load-secrets="loadSecrets"
+        :capture="capture"
         @submit="handleSubmit"
       >
         <template #targets>

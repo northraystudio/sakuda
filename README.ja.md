@@ -130,33 +130,34 @@ docker run -d --name sakuda -p 127.0.0.1:3001:3000 --shm-size=1g \
 
 ## 環境変数
 
-| 変数                              | デフォルト                                                 | 備考                                                                                                                                                                       |
-| --------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SAKUDA_ENCRYPTION_KEY`           | _(必須)_                                                   | ランダム 32 バイトの base64。`pnpm keygen` または `openssl rand -base64 32` で生成。                                                                                       |
-| `SAKUDA_DATA_DIR`                 | `./data`（イメージ内は `/data`）                           | SQLite DB とスキャンごとの作業ディレクトリの置き場。                                                                                                                       |
-| `SAKUDA_MIGRATIONS_DIR`           | `./server/db/migrations`（イメージ内は `/app/migrations`） | 起動時に適用される Drizzle マイグレーション。                                                                                                                              |
-| `SAKUDA_NUCLEI_BIN`               | `nuclei`（イメージ内は `/usr/local/bin/nuclei`）           | nuclei バイナリのパス。                                                                                                                                                    |
-| `SAKUDA_NUCLEI_TEMPLATES`         | `/opt/nuclei-templates/http`                               | ピン留めした nuclei-templates のチェックアウト。                                                                                                                           |
-| `SAKUDA_NUCLEI_DAST_TEMPLATES`    | `/opt/nuclei-templates/dast`                               | DAST（ファジング）テンプレート。「アクティブインジェクション検査」が有効なサイトでのみ読み込まれる。                                                                       |
-| `SAKUDA_NUCLEI_MAX_MINUTES`       | `60`                                                       | nuclei 1 実行のハードタイムアウト。全フェーズ（DAST / signature / OpenAPI）で共有。                                                                                        |
-| `SAKUDA_NUCLEI_CONCURRENCY`       | `25`                                                       | nuclei の並列度（`-c`）。遅い・壊れやすいターゲットでは下げると、遅い応答待ちで浪費する時間が減る。                                                                        |
-| `SAKUDA_KATANA_BIN`               | `katana`（イメージ内は `/usr/local/bin/katana`）           | katana バイナリのパス（ディスカバリの第 2 の URL ソース）。時間予算はサイトの spider 分数と同じで、個別の設定はない。                                                      |
-| `SAKUDA_DALFOX_BIN`               | `dalfox`（イメージ内は `/usr/local/bin/dalfox`）           | dalfox バイナリのパス（反射型 / DOM XSS エンジン）。アクティブインジェクション検査が有効なときのみ実行。                                                                   |
-| `SAKUDA_DALFOX_MAX_MINUTES`       | `10`                                                       | dalfox 1 実行の実時間予算。                                                                                                                                                |
-| `SAKUDA_DALFOX_CONCURRENCY`       | `10`                                                       | dalfox の並列度（ワーカー / 同時ターゲット数）。小さめに固定 — 偵察ダンプではなく厳選されたターゲットリストをスキャンするため。                                            |
-| `SAKUDA_DALFOX_MAX_TARGETS`       | `50`                                                       | dalfox 1 実行が消費する保存済み GET ターゲット数の上限。                                                                                                                   |
-| `SAKUDA_HTTPX_BIN`                | `httpx`（イメージ内は `/usr/local/bin/httpx`）             | httpx バイナリのパス — nuclei のスキャン前の疎通プローブ。無い場合は警告付きで全ターゲットを素通しする。                                                                   |
-| `SAKUDA_HTTPX_MAX_MINUTES`        | `5`                                                        | プローブ全体の上限。nuclei 実行の時間予算の内側で数える。                                                                                                                  |
-| `SAKUDA_HTTPX_PRUNE_STATUS_CODES` | _(空 = オフ)_                                              | オプトイン: ここに挙げた 4xx コード（405/429 は不可）を返したターゲットを nuclei のリストから落とす。例 `404,410`。デフォルトはオフ — 後述。                               |
-| `SAKUDA_ZAP_CMD`                  | `zap.sh`（イメージ内は `/zap/zap.sh`）                     | ZAP のエントリポイント。macOS での開発時は `./scripts/zap-docker.sh`。                                                                                                     |
-| `SAKUDA_ZAP_WORKDIR`              | _(未設定)_                                                 | ZAP から見たスキャン作業ディレクトリのパスがホストと異なるときのコンテナ側パス（開発用ラッパは `/zap/wrk` にマウントする）。                                               |
-| `SAKUDA_ZAP_MAX_HEAP`             | `1024m`                                                    | `JAVA_TOOL_OPTIONS` 経由で ZAP に渡す `-Xmx`。                                                                                                                             |
-| `SAKUDA_LOCALHOST_ALIAS`          | _(未設定)_                                                 | 全エンジン向けに、ターゲット URL の `localhost` / `127.0.0.1` を書き換える。                                                                                               |
-| `SAKUDA_ZAP_LOCALHOST_ALIAS`      | `host.docker.internal`                                     | 同上、ZAP 専用（未設定なら `SAKUDA_LOCALHOST_ALIAS` にフォールバック）。ZAP の Firefox はこのホストを secure context として扱う。                                          |
-| `SAKUDA_ENGINE_GRACE_MINUTES`     | `10`                                                       | 孤立したエンジンプロセスを失敗扱いにするまでの猶予時間。                                                                                                                   |
-| `SAKUDA_JOB_RUNNER`               | `on`                                                       | `off` でインプロセスのスキャンキューを無効化（テスト時など）。                                                                                                             |
-| `SAKUDA_MCP_API_KEY`              | _(未設定)_                                                 | `/mcp` 用の任意の Bearer キー（16 文字以上）。未設定: ループバックのみ・認証なし・秘密値は常に伏せ字。設定時: 全 MCP リクエストで必須になり、`reveal` が使えるようになる。 |
-| `LOG_LEVEL`                       | `info`                                                     | `debug` \| `info` \| `warn` \| `error`。                                                                                                                                   |
+| 変数                              | デフォルト                                                                | 備考                                                                                                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SAKUDA_ENCRYPTION_KEY`           | _(必須)_                                                                  | ランダム 32 バイトの base64。`pnpm keygen` または `openssl rand -base64 32` で生成。                                                                                       |
+| `SAKUDA_DATA_DIR`                 | `./data`（イメージ内は `/data`）                                          | SQLite DB とスキャンごとの作業ディレクトリの置き場。                                                                                                                       |
+| `SAKUDA_MIGRATIONS_DIR`           | `./server/db/migrations`（イメージ内は `/app/migrations`）                | 起動時に適用される Drizzle マイグレーション。                                                                                                                              |
+| `SAKUDA_NUCLEI_BIN`               | `nuclei`（イメージ内は `/usr/local/bin/nuclei`）                          | nuclei バイナリのパス。                                                                                                                                                    |
+| `SAKUDA_NUCLEI_TEMPLATES`         | `/opt/nuclei-templates/http`                                              | ピン留めした nuclei-templates のチェックアウト。                                                                                                                           |
+| `SAKUDA_NUCLEI_DAST_TEMPLATES`    | `/opt/nuclei-templates/dast`                                              | DAST（ファジング）テンプレート。「アクティブインジェクション検査」が有効なサイトでのみ読み込まれる。                                                                       |
+| `SAKUDA_NUCLEI_MAX_MINUTES`       | `60`                                                                      | nuclei 1 実行のハードタイムアウト。全フェーズ（DAST / signature / OpenAPI）で共有。                                                                                        |
+| `SAKUDA_NUCLEI_CONCURRENCY`       | `25`                                                                      | nuclei の並列度（`-c`）。遅い・壊れやすいターゲットでは下げると、遅い応答待ちで浪費する時間が減る。                                                                        |
+| `SAKUDA_KATANA_BIN`               | `katana`（イメージ内は `/usr/local/bin/katana`）                          | katana バイナリのパス（ディスカバリの第 2 の URL ソース）。時間予算はサイトの spider 分数と同じで、個別の設定はない。                                                      |
+| `SAKUDA_DALFOX_BIN`               | `dalfox`（イメージ内は `/usr/local/bin/dalfox`）                          | dalfox バイナリのパス（反射型 / DOM XSS エンジン）。アクティブインジェクション検査が有効なときのみ実行。                                                                   |
+| `SAKUDA_DALFOX_MAX_MINUTES`       | `10`                                                                      | dalfox 1 実行の実時間予算。                                                                                                                                                |
+| `SAKUDA_DALFOX_CONCURRENCY`       | `10`                                                                      | dalfox の並列度（ワーカー / 同時ターゲット数）。小さめに固定 — 偵察ダンプではなく厳選されたターゲットリストをスキャンするため。                                            |
+| `SAKUDA_DALFOX_MAX_TARGETS`       | `50`                                                                      | dalfox 1 実行が消費する保存済み GET ターゲット数の上限。                                                                                                                   |
+| `SAKUDA_HTTPX_BIN`                | `httpx`（イメージ内は `/usr/local/bin/httpx`）                            | httpx バイナリのパス — nuclei のスキャン前の疎通プローブ。無い場合は警告付きで全ターゲットを素通しする。                                                                   |
+| `SAKUDA_HTTPX_MAX_MINUTES`        | `5`                                                                       | プローブ全体の上限。nuclei 実行の時間予算の内側で数える。                                                                                                                  |
+| `SAKUDA_HTTPX_PRUNE_STATUS_CODES` | _(空 = オフ)_                                                             | オプトイン: ここに挙げた 4xx コード（405/429 は不可）を返したターゲットを nuclei のリストから落とす。例 `404,410`。デフォルトはオフ — 後述。                               |
+| `SAKUDA_ZAP_CMD`                  | `zap.sh`（イメージ内は `/zap/zap.sh`）                                    | ZAP のエントリポイント。macOS での開発時は `./scripts/zap-docker.sh`。                                                                                                     |
+| `SAKUDA_ZAP_WORKDIR`              | _(未設定)_                                                                | ZAP から見たスキャン作業ディレクトリのパスがホストと異なるときのコンテナ側パス（開発用ラッパは `/zap/wrk` にマウントする）。                                               |
+| `SAKUDA_ZAP_MAX_HEAP`             | `1024m`                                                                   | `JAVA_TOOL_OPTIONS` 経由で ZAP に渡す `-Xmx`。                                                                                                                             |
+| `SAKUDA_LOCALHOST_ALIAS`          | _(未設定)_                                                                | 全エンジン向けに、ターゲット URL の `localhost` / `127.0.0.1` を書き換える。                                                                                               |
+| `SAKUDA_ZAP_LOCALHOST_ALIAS`      | `host.docker.internal`                                                    | 同上、ZAP 専用（未設定なら `SAKUDA_LOCALHOST_ALIAS` にフォールバック）。ZAP の Firefox はこのホストを secure context として扱う。                                          |
+| `SAKUDA_ENGINE_GRACE_MINUTES`     | `10`                                                                      | 孤立したエンジンプロセスを失敗扱いにするまでの猶予時間。                                                                                                                   |
+| `SAKUDA_JOB_RUNNER`               | `on`                                                                      | `off` でインプロセスのスキャンキューを無効化（テスト時など）。                                                                                                             |
+| `SAKUDA_CAPTURE_CDP_URL`          | `http://127.0.0.1:9222`（Docker では `http://host.docker.internal:9222`） | **Log in with browser** が使うホストの Chrome の DevTools エンドポイント（`make capture-browser`）。環境変数からのみ読む。                                                 |
+| `SAKUDA_MCP_API_KEY`              | _(未設定)_                                                                | `/mcp` 用の任意の Bearer キー（16 文字以上）。未設定: ループバックのみ・認証なし・秘密値は常に伏せ字。設定時: 全 MCP リクエストで必須になり、`reveal` が使えるようになる。 |
+| `LOG_LEVEL`                       | `info`                                                                    | `debug` \| `info` \| `warn` \| `error`。                                                                                                                                   |
 
 デフォルト値とバリデーションの全容は `server/config/env.ts` を参照。ローカル用
 `.env` のコピー元は `.env.example` です。
@@ -349,11 +350,29 @@ password}` や `json {email, password}` のようなバッジで、捕捉した�
 中身で判断します — そのためヘッダだけでは ZAP のブラウザは匿名 UI を描画し、
 バスケット、プロフィール、… のページやその裏の API に到達しません。それらの値を
 サイトの **Browser storage** として登録すると（kind + name + value。ヘッダ同様に
-暗号化保存、API では書き込み専用）、sakuda は Ajax spider の実行（ディスカバリと
+暗号化保存、サイト API は名前だけを返す）、sakuda は Ajax spider の実行（ディスカバリと
 ZAP frontend）のたびに、実行中だけ 0600 で書かれ終了後に削除される Selenium の
 `browserLaunched` スクリプト経由で ZAP のブラウザにそれらをシードします。OWASP
 Juice Shop なら `POST /rest/user/login` から得られる `localStorage token = <JWT>`
 と `sessionStorage bid = <basket id>` です。
+
+**コピペせずブラウザでログインする。** `make capture-browser` で、使い捨てのプロファイル・
+DevTools（`127.0.0.1:9222`）付きの Chrome をホストで起動し、**Edit site →
+Authentication** で **Log in with browser** を押すと、その Chrome でサイトが開きます。
+いつもどおりログインして **Capture** を押すと、そのタブからフォームが埋まります —
+すべての Cookie（HttpOnly を含む）と localStorage / sessionStorage の各値が Browser
+storage の行になり、加えて Cookie をまとめた `Cookie` ヘッダと、保存値が JWT なら
+`Authorization: Bearer` ヘッダが入ります。行を確認して不要なものを削除し、保存して
+ください。保存するまで何も記録されません。各行の目のアイコンで、保存済みの値に
+コピペミスがないか確認できます。分かっている有効期限（JWT の `exp`、キャプチャした
+Cookie の `expires`）は平文で保持して行の横に表示し、期限切れ・60 分以内に切れる
+ログインは **Start scan** の横とスキャン作成の応答で警告します。キャプチャと目の
+アイコンは、ループバックの `Host` / `Origin` にだけ応答します。その Chrome が動いている間は、このマシン上の
+どのプロセスからも（`host.docker.internal` 経由でコンテナからも）操作できるため、
+sakuda は **Capture** の後にその Chrome を終了させます。途中でやめた場合は自分で
+終了してください。Docker Desktop
+（macOS / Windows）か、ホストで動かす sakuda が前提です。Linux の Docker では、
+`host.docker.internal` から 127.0.0.1 に bind した Chrome に届きません。
 
 **ディスカバリのシード。** _Discovery seed paths_（1 行 1 つ。`/#/search?q=apple`
 のようなハッシュルートも可）はそれぞれ Ajax spider を 1 つ起動します。空の場合は

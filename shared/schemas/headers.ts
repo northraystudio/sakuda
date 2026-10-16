@@ -14,7 +14,17 @@ export const HeaderSchema = z.object({ name: HeaderName, value: HeaderValue })
 
 /** One row of a site update: a missing `value` means "keep the stored value
  * for this name" — the merge itself lives in `siteService.updateSite`. */
-export const HeaderPatchSchema = z.object({ name: HeaderName, value: HeaderValue.optional() })
+export const HeaderPatchSchema = z
+  .object({
+    name: HeaderName,
+    value: HeaderValue.optional(),
+    /** Known expiry of a new value (set by auth capture, #17). */
+    expiresAt: z.iso.datetime().optional(),
+  })
+  .refine((h) => h.expiresAt === undefined || h.value !== undefined, {
+    path: ['expiresAt'],
+    message: 'expiresAt requires a value',
+  })
 
 const HEADERS_MAX = 20
 
