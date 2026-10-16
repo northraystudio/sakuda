@@ -356,7 +356,7 @@ ZAP frontend）のたびに、実行中だけ 0600 で書かれ終了後に削�
 Juice Shop なら `POST /rest/user/login` から得られる `localStorage token = <JWT>`
 と `sessionStorage bid = <basket id>` です。
 
-**コピペせずブラウザでログインする。** `make capture-browser` で、専用プロファイル・
+**コピペせずブラウザでログインする。** `make capture-browser` で、使い捨てのプロファイル・
 DevTools（`127.0.0.1:9222`）付きの Chrome をホストで起動し、**Edit site →
 Authentication** で **Log in with browser** を押すと、その Chrome でサイトが開きます。
 いつもどおりログインして **Capture** を押すと、そのタブからフォームが埋まります —
@@ -367,7 +367,10 @@ storage の行になり、加えて Cookie をまとめた `Cookie` ヘッダと
 コピペミスがないか確認できます。分かっている有効期限（JWT の `exp`、キャプチャした
 Cookie の `expires`）は平文で保持して行の横に表示し、期限切れ・60 分以内に切れる
 ログインは **Start scan** の横とスキャン作成の応答で警告します。キャプチャと目の
-アイコンは、ループバックの `Host` / `Origin` にだけ応答します。Docker Desktop
+アイコンは、ループバックの `Host` / `Origin` にだけ応答します。その Chrome が動いている間は、このマシン上の
+どのプロセスからも（`host.docker.internal` 経由でコンテナからも）操作できるため、
+sakuda は **Capture** の後にその Chrome を終了させます。途中でやめた場合は自分で
+終了してください。Docker Desktop
 （macOS / Windows）か、ホストで動かす sakuda が前提です。Linux の Docker では、
 `host.docker.internal` から 127.0.0.1 に bind した Chrome に届きません。
 

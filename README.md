@@ -360,7 +360,7 @@ Juice Shop that is `localStorage token = <JWT>` plus `sessionStorage bid =
 <basket id>` from `POST /rest/user/login`.
 
 **Log in with a browser instead of copy-pasting.** Run `make capture-browser`
-(a Chrome on your machine with a dedicated profile and DevTools on
+(a Chrome on your machine with a throwaway profile and DevTools on
 `127.0.0.1:9222`), then in **Edit site → Authentication** press **Log in with
 browser**: the site opens in that Chrome. Log in as usual, press
 **Capture**, and the form is filled from the tab — every cookie (HttpOnly
@@ -372,7 +372,10 @@ row to check a stored value for copy-paste mistakes. Known expiry times (a
 JWT's `exp`, a captured cookie's `expires`) are kept in plaintext, shown next
 to the row, and an expired or soon-expiring (≤ 60 min) login is flagged next
 to **Start scan** and in the scan-create response. Capture and the eye
-button only answer on a loopback `Host`/`Origin`. Requires Docker Desktop
+button only answer on a loopback `Host`/`Origin`. While that Chrome runs,
+anything on this machine (including containers, via `host.docker.internal`)
+can drive it, so sakuda quits it after **Capture** — quit it yourself if you
+stop early. Requires Docker Desktop
 (macOS / Windows) or sakuda running on the host; on Linux Docker,
 `host.docker.internal` does not reach a Chrome bound to 127.0.0.1.
 

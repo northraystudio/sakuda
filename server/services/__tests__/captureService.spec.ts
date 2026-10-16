@@ -11,12 +11,12 @@ import { SiteInputSchema } from '#shared/schemas/site'
 
 vi.mock('../../capture/cdp', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../capture/cdp')>()
-  return { ...real, openTab: vi.fn(), captureTab: vi.fn(), closeTab: vi.fn() }
+  return { ...real, openTab: vi.fn(), captureTab: vi.fn(), closeBrowser: vi.fn() }
 })
 const cdp = await import('../../capture/cdp')
 const openTab = vi.mocked(cdp.openTab)
 const captureTab = vi.mocked(cdp.captureTab)
-const closeTab = vi.mocked(cdp.closeTab)
+const closeBrowser = vi.mocked(cdp.closeBrowser)
 
 const migrationsFolder = fileURLToPath(new URL('../../db/migrations', import.meta.url))
 const TARGET = 'A1B2C3D4E5F60718293A4B5C6D7E8F90'
@@ -65,14 +65,14 @@ describe('captureService', () => {
     await expect(startCapture(deps, 'nope')).rejects.toMatchObject({ statusCode: 404 })
   })
 
-  it('finishCapture reads front + API cookies, closes the tab, and never logs values', async () => {
+  it('finishCapture reads front + API cookies, shuts the capture browser, and never logs values', async () => {
     captureTab.mockResolvedValue({
       origin: 'http://localhost:3000',
       cookies: [{ name: 'sid', value: 'secret-cookie-value' }],
       localStorage: [['token', 'secret-token-value']],
       sessionStorage: [],
     })
-    closeTab.mockResolvedValue()
+    closeBrowser.mockResolvedValue()
     const r = await finishCapture(deps, siteId, TARGET)
     expect(captureTab).toHaveBeenCalledWith(
       TARGET,
@@ -82,13 +82,13 @@ describe('captureService', () => {
     )
     expect(r.browserStorage).toHaveLength(2)
     expect(r.headers).toEqual([{ name: 'Cookie', value: 'sid=secret-cookie-value' }])
-    expect(closeTab).toHaveBeenCalledWith(TARGET, deps.cdp)
+    expect(closeBrowser).toHaveBeenCalledWith(deps.cdp)
     expect(logLines.join('')).not.toMatch(/secret-(cookie|token)-value/)
   })
 
-  it('still returns the capture when closing the tab fails, and maps a wrong origin to 409', async () => {
+  it('still returns the capture when shutting the browser fails, and maps a wrong origin to 409', async () => {
     captureTab.mockResolvedValue({ origin: 'x', cookies: [], localStorage: [], sessionStorage: [] })
-    closeTab.mockRejectedValue(new CdpError('CDP_UNREACHABLE', 'gone'))
+    closeBrowser.mockRejectedValue(new CdpError('CDP_UNREACHABLE', 'gone'))
     await expect(finishCapture(deps, siteId, TARGET)).resolves.toMatchObject({ headers: [] })
     expect(logLines.join('')).toContain('capture.close')
 

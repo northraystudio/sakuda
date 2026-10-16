@@ -1,4 +1,4 @@
-import { captureTab, CdpError, closeTab, openTab, type CdpOptions } from '../capture/cdp'
+import { captureTab, CdpError, closeBrowser, openTab, type CdpOptions } from '../capture/cdp'
 import type { Db } from '../db/client'
 import { buildCaptureCandidates } from '../domain/captureCandidates'
 import type { Logger } from '../lib/logger'
@@ -61,12 +61,13 @@ export async function finishCapture(
   } catch (err) {
     toServiceError(err)
   }
-  // The login tab is no longer needed; failing to close it is not worth
-  // failing a capture that already succeeded.
-  await closeTab(targetId, deps.cdp).catch((err: unknown) => {
+  // Done with the capture browser: shut it so its DevTools port does not
+  // stay open. Failing that is not worth failing a capture that succeeded —
+  // but the user must know to close it.
+  await closeBrowser(deps.cdp).catch((err: unknown) => {
     deps.logger.warn(
       { operation: 'capture.close', siteId, targetId, err: String(err) },
-      'could not close the login tab — close it by hand',
+      'could not close the capture browser — quit that Chrome by hand',
     )
   })
   deps.logger.info(

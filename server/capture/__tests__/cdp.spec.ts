@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { captureTab, CdpError, closeTab, isTargetId, openTab, resolveCdpBase } from '../cdp'
+import { captureTab, CdpError, closeBrowser, isTargetId, openTab, resolveCdpBase } from '../cdp'
 
 const TARGET = 'A1B2C3D4E5F60718293A4B5C6D7E8F90'
 const OPTS = { baseUrl: 'http://127.0.0.1:9222', timeoutMs: 1000 }
@@ -82,7 +82,7 @@ describe('isTargetId / resolveCdpBase', () => {
   })
 })
 
-describe('openTab / closeTab', () => {
+describe('openTab', () => {
   it('opens the target URL with PUT /json/new and returns the id', async () => {
     stubFetch({
       '/json/new': () => Response.json({ id: TARGET, type: 'page', url: 'http://localhost:3000/' }),
@@ -101,12 +101,32 @@ describe('openTab / closeTab', () => {
     expect(err).toMatchObject({ code: 'CDP_UNREACHABLE' })
     expect(String(err)).toContain('make capture-browser')
   })
+})
 
-  it('closeTab ignores an invalid id and a tab that is already gone', async () => {
-    stubFetch({ [`/json/close/${TARGET}`]: () => new Response('No such target', { status: 404 }) })
-    await expect(closeTab('not-an-id', OPTS)).resolves.toBeUndefined()
-    await expect(closeTab(TARGET, OPTS)).resolves.toBeUndefined()
-    expect(fetchCalls).toHaveLength(1)
+describe('closeBrowser', () => {
+  it('sends Browser.close on the browser socket and tolerates the dropped connection', async () => {
+    stubFetch({
+      '/json/version': () =>
+        Response.json({ webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/browser/abc' }),
+    })
+    const methods: string[] = []
+    class ClosingWebSocket extends EventTarget {
+      constructor(url: string) {
+        super()
+        opened.push(url)
+        queueMicrotask(() => this.dispatchEvent(new Event('open')))
+      }
+      send(data: string) {
+        methods.push(String(JSON.parse(data).method))
+        // Chrome exits without answering
+        queueMicrotask(() => this.dispatchEvent(new Event('close')))
+      }
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', ClosingWebSocket)
+    await expect(closeBrowser(OPTS)).resolves.toBeUndefined()
+    expect(methods).toEqual(['Browser.close'])
+    expect(opened).toEqual(['ws://127.0.0.1:9222/devtools/browser/abc'])
   })
 })
 

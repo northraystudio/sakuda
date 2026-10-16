@@ -8,11 +8,11 @@ export
 SAKUDA_PORT    ?= 3001
 SAKUDA_BIND    ?= 127.0.0.1
 JUICESHOP_PORT ?= 4001
-# Auth capture (#17): DevTools port and a dedicated profile for the host
-# Chrome that sakuda drives (Chrome refuses remote debugging on the default
-# profile, and a separate profile keeps your everyday logins out of reach).
+# Auth capture (#17): DevTools port of the host Chrome that sakuda drives.
+# Each launch gets a fresh throwaway profile (Chrome refuses remote debugging
+# on the default one), so your everyday logins stay out of reach and no
+# captured session lingers on disk; sakuda quits that Chrome after a capture.
 CAPTURE_CDP_PORT ?= 9222
-CAPTURE_PROFILE  ?= $(HOME)/.sakuda/capture-profile
 COMPOSE        ?= docker compose
 # Juice Shop is its own compose project (targets/juice-shop/compose.yml), so
 # sakuda's down/reset never touch it. Compose looks for .env next to the
@@ -68,17 +68,18 @@ open: ## Open the UI in the browser
 	open "http://localhost:$(SAKUDA_PORT)"
 
 capture-browser: ## Start a Chrome that sakuda can drive for "Log in with browser" (Edit site → Authentication)
-	@mkdir -p "$(CAPTURE_PROFILE)"
-	@if [ "$$(uname)" = Darwin ]; then \
+	@profile="$$(mktemp -d "$${TMPDIR:-/tmp}/sakuda-capture.XXXXXX")"; \
+	if [ "$$(uname)" = Darwin ]; then \
 	  open -na "Google Chrome" --args --remote-debugging-port=$(CAPTURE_CDP_PORT) \
-	    --user-data-dir="$(CAPTURE_PROFILE)" --no-first-run about:blank; \
+	    --user-data-dir="$$profile" --no-first-run about:blank; \
 	else \
 	  bin="$$(command -v google-chrome || command -v chromium || command -v chromium-browser)"; \
 	  [ -n "$$bin" ] || { echo "Chrome/Chromium not found"; exit 1; }; \
-	  nohup "$$bin" --remote-debugging-port=$(CAPTURE_CDP_PORT) --user-data-dir="$(CAPTURE_PROFILE)" \
+	  nohup "$$bin" --remote-debugging-port=$(CAPTURE_CDP_PORT) --user-data-dir="$$profile" \
 	    --no-first-run about:blank >/dev/null 2>&1 & \
-	fi
-	@echo "capture browser: DevTools on 127.0.0.1:$(CAPTURE_CDP_PORT), profile $(CAPTURE_PROFILE)"
+	fi; \
+	echo "capture browser: DevTools on 127.0.0.1:$(CAPTURE_CDP_PORT), throwaway profile $$profile"; \
+	echo "anything on this machine can drive it while it runs — sakuda quits it after Capture; quit it yourself if you stop early"
 
 juice-up: ## Start OWASP Juice Shop as a dry-run target (http://localhost:JUICESHOP_PORT)
 	$(JUICE_COMPOSE) up -d

@@ -128,15 +128,29 @@ export async function openTab(url: string, opts: CdpOptions): Promise<string> {
   return target.id
 }
 
-/** Closes the tab; a tab the user already closed is not an error. */
-export async function closeTab(targetId: string, opts: CdpOptions): Promise<void> {
-  if (!isTargetId(targetId)) return
+/**
+ * Shuts the capture browser down once a capture is done (`Browser.close`), so
+ * its DevTools port — which anything on the host, and any container through
+ * host.docker.internal, could drive — is not left open. An already-closed
+ * browser is not an error.
+ */
+export async function closeBrowser(opts: CdpOptions): Promise<void> {
   const base = await resolveCdpBase(opts.baseUrl)
-  try {
-    await cdpHttp(base, `/json/close/${targetId}`, opts)
-  } catch (err) {
-    if (!(err instanceof CdpError && err.code === 'CDP_PROTOCOL')) throw err
-  }
+  const version = await cdpHttp(base, '/json/version', opts)
+  const wsRaw =
+    typeof version === 'object' && version !== null && 'webSocketDebuggerUrl' in version
+      ? version.webSocketDebuggerUrl
+      : undefined
+  if (typeof wsRaw !== 'string')
+    throw new CdpError('CDP_PROTOCOL', 'DevTools /json/version returned no browser socket')
+  const wsUrl = new URL(wsRaw)
+  wsUrl.host = base.host
+  await withSession(wsUrl.toString(), opts, async (send) => {
+    // Chrome drops the connection while exiting, so the reply may never come.
+    await send('Browser.close').catch((err: unknown) => {
+      if (!(err instanceof CdpError && err.code === 'CDP_PROTOCOL')) throw err
+    })
+  })
 }
 
 async function findPageTarget(base: URL, targetId: string, opts: CdpOptions): Promise<TargetInfo> {
