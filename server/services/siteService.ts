@@ -4,9 +4,11 @@ import { join } from 'node:path'
 import type { Db } from '../db/client'
 import { discoveries, scans, sites } from '../db/schema'
 import type { SiteCipher } from '../domain/headerCipher'
+import { resolveSecretExpiries, type SecretExpiryEntry } from '../domain/secretExpiry'
 import { toSitePublic } from '../domain/siteView'
 import { parseNucleiPathLines, targetLineKey } from '#shared/utils/nucleiPaths'
 import { mergeTargetLines, removeTargetLine } from '#shared/utils/targetLines'
+import { secretKey } from '#shared/utils/secretExpiry'
 import type { Logger } from '../lib/logger'
 import { ServiceError } from './errors'
 import { latestScanSummary } from './scanService'
@@ -77,6 +79,14 @@ export function createSite(deps: SiteServiceDeps, input: SiteInput): SitePublic 
       ...fields,
       ...sealHeaders(deps, id, headers),
       ...sealBrowserStorage(deps, id, browserStorage),
+      secretExpiries: resolveSecretExpiries(
+        [...headers, ...browserStorage].map((i) => ({
+          key: secretKey(i),
+          value: i.value,
+          kept: false,
+        })),
+        {},
+      ),
       createdAt: now,
       updatedAt: now,
     })
@@ -142,35 +152,59 @@ function mergeBrowserStoragePatches(
   return merged
 }
 
+/** Patch rows and merged items line up 1:1 (the merge throws otherwise). */
+function expiryEntries(
+  patches: (HeaderPatch | BrowserStoragePatch)[],
+  merged: (Header | BrowserStorageItem)[],
+): SecretExpiryEntry[] {
+  return merged.map((item, i) => ({
+    key: secretKey(item),
+    value: item.value,
+    expiresAt: patches[i]?.expiresAt,
+    kept: patches[i]?.value === undefined,
+  }))
+}
+
+/** Expiries of the half (headers or storage) an update left alone. */
+function keepExpiries(previous: Record<string, string>, headers: boolean): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(previous).filter(([k]) => k.startsWith('header:') === headers),
+  )
+}
+
 export function updateSite(deps: SiteServiceDeps, id: string, input: SiteUpdateInput): SitePublic {
   const existing = deps.db.select().from(sites).where(eq(sites.id, id)).get()
   if (!existing) throw new ServiceError(404, 'SITE_NOT_FOUND', `site ${id} not found`)
   // Secrets are write-only: omitting the field keeps the stored set, [] clears it.
   const { headers, browserStorage, ...fields } = input
-  const sealed =
+  const previousExpiries = existing.secretExpiries
+  const mergedHeaders =
     headers === undefined
-      ? {}
-      : sealHeaders(
-          deps,
-          id,
-          mergeHeaderPatches(
-            existing.headersEnc ? deps.cipher.headers.open(existing.headersEnc, id) : [],
-            headers,
-          ),
+      ? undefined
+      : mergeHeaderPatches(
+          existing.headersEnc ? deps.cipher.headers.open(existing.headersEnc, id) : [],
+          headers,
         )
-  const sealedStorage =
+  const mergedStorage =
     browserStorage === undefined
-      ? {}
-      : sealBrowserStorage(
-          deps,
-          id,
-          mergeBrowserStoragePatches(
-            existing.browserStorageEnc
-              ? deps.cipher.browserStorage.open(existing.browserStorageEnc, id)
-              : [],
-            browserStorage,
-          ),
+      ? undefined
+      : mergeBrowserStoragePatches(
+          existing.browserStorageEnc
+            ? deps.cipher.browserStorage.open(existing.browserStorageEnc, id)
+            : [],
+          browserStorage,
         )
+  const sealed = mergedHeaders === undefined ? {} : sealHeaders(deps, id, mergedHeaders)
+  const sealedStorage =
+    mergedStorage === undefined ? {} : sealBrowserStorage(deps, id, mergedStorage)
+  const secretExpiries = {
+    ...(headers === undefined || mergedHeaders === undefined
+      ? keepExpiries(previousExpiries, true)
+      : resolveSecretExpiries(expiryEntries(headers, mergedHeaders), previousExpiries)),
+    ...(browserStorage === undefined || mergedStorage === undefined
+      ? keepExpiries(previousExpiries, false)
+      : resolveSecretExpiries(expiryEntries(browserStorage, mergedStorage), previousExpiries)),
+  }
   // Saved shapes belong to saved target lines: dropping a line in Edit (where
   // nucleiPaths is rewritten wholesale) must drop its shape too.
   const requestShapes = pruneRequestShapes(existing.requestShapes, fields.nucleiPaths)
@@ -180,6 +214,7 @@ export function updateSite(deps: SiteServiceDeps, id: string, input: SiteUpdateI
       ...fields,
       ...sealed,
       ...sealedStorage,
+      secretExpiries,
       requestShapes,
       updatedAt: deps.now().toISOString(),
     })

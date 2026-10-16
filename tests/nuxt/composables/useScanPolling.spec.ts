@@ -41,6 +41,7 @@ function scanFixture(overrides: Partial<ScanDetail> = {}): ScanDetail {
       headerNames: [],
       browserStorageNames: [],
       requestShapes: {},
+      secretExpiries: {},
       requiresConfirmation: false,
     },
     engineRuns: [],

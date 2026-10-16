@@ -48,6 +48,9 @@ export interface SitePublic {
   /** Value-free request-body shapes of approved non-GET targets, keyed by
    * `targetLineKey` (see #72). Consumed by the generated OpenAPI (#73). */
   requestShapes: Record<string, RequestShape>
+  /** Known expiry (ISO) of each auth secret, keyed `header:<name>` or
+   * `<kind>:<name>` — values stay write-only, expiry times are not secret. */
+  secretExpiries: Record<string, string>
   requiresConfirmation: boolean
   createdAt: string
   updatedAt: string
@@ -78,6 +81,11 @@ export interface ScanSummary {
   finishedAt: string | null
   error: string | null
   counts: SeverityCounts
+}
+/** `POST /api/sites/:id/scans` answer: the queued scan plus non-blocking
+ * warnings (expired / soon-expiring auth secrets, #17). */
+export interface CreatedScan extends ScanSummary {
+  warnings: string[]
 }
 export interface SiteListItem extends SitePublic {
   lastScan: ScanSummary | null

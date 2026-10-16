@@ -16,6 +16,7 @@ import { parseNucleiPathLines } from '#shared/utils/nucleiPaths'
 import { isActiveScanEnabled } from '#shared/utils/activeScan'
 import { ENGINE_LABELS, ENGINE_ORDER } from '#shared/utils/engines'
 import { formatTargetLine } from '#shared/utils/targetLines'
+import { findExpiryProblems, formatExpiryWarning } from '#shared/utils/secretExpiry'
 
 const route = useRoute()
 // `route.params.id` is `string | string[]` generically; this route only has
@@ -98,6 +99,12 @@ function selectedEngines(): Engine[] {
   if (dalfoxChecked.value) engines.push('dalfox')
   return engines
 }
+
+/** Expired / soon-expiring auth secrets (#17), shown before Start scan so a
+ * logged-out run is not misread. Evaluated against the time of render. */
+const authExpiryWarnings = computed(() =>
+  findExpiryProblems(site.value?.secretExpiries ?? {}, new Date()).map(formatExpiryWarning),
+)
 
 async function handleStartScan() {
   if (!canStartScan.value) return
@@ -293,6 +300,17 @@ async function handleStartScan() {
             </p>
           </div>
         </div>
+
+        <ul v-if="authExpiryWarnings.length > 0" class="flex flex-col gap-2">
+          <li
+            v-for="(warning, index) in authExpiryWarnings"
+            :key="index"
+            data-testid="auth-expiry-warning"
+            class="border-sale bg-soft-cloud text-caption-md text-ink border-l-4 px-4 py-2"
+          >
+            {{ warning }}
+          </li>
+        </ul>
 
         <p v-if="errorMessage" data-testid="scan-error" class="text-sale text-body-md">
           {{ errorMessage }}

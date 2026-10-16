@@ -68,6 +68,46 @@ describe('siteService', () => {
     expect(getSiteSecrets(deps, 'missing')).toBeNull()
   })
 
+  describe('secret expiries (#17)', () => {
+    const enc = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url')
+    const jwt = (exp: number) => `${enc({ alg: 'HS256' })}.${enc({ exp })}.sig`
+    const EXP = 1_800_000_000
+    const EXP_ISO = new Date(EXP * 1000).toISOString()
+
+    it('derives a JWT exp on create and exposes expiries, never values', () => {
+      const s = createSite(deps, {
+        ...base,
+        headers: [{ name: 'Authorization', value: `Bearer ${jwt(EXP)}` }],
+        browserStorage: [{ kind: 'cookie', name: 'sid', value: 'opaque' }],
+      })
+      expect(s.secretExpiries).toEqual({ 'header:Authorization': EXP_ISO })
+    })
+
+    it('stores an explicit expiry, keeps it for kept values, and drops it on replace or delete', () => {
+      const s = createSite(deps, { ...base })
+      const at = '2026-12-01T00:00:00.000Z'
+      updateSite(deps, s.id, {
+        ...base,
+        browserStorage: [{ kind: 'cookie', name: 'sid', value: 'v1', expiresAt: at }],
+      })
+      // kept (name-only) → expiry kept; headers untouched → storage expiry untouched
+      expect(
+        updateSite(deps, s.id, { ...base, browserStorage: [{ kind: 'cookie', name: 'sid' }] })
+          .secretExpiries,
+      ).toEqual({ 'cookie:sid': at })
+      expect(
+        updateSite(deps, s.id, { ...base, headers: [{ name: 'X', value: 'y' }] }).secretExpiries,
+      ).toEqual({ 'cookie:sid': at })
+      // replaced without an expiry → gone
+      expect(
+        updateSite(deps, s.id, {
+          ...base,
+          browserStorage: [{ kind: 'cookie', name: 'sid', value: 'v2' }],
+        }).secretExpiries,
+      ).toEqual({})
+    })
+  })
+
   it('update keeps headers when omitted and clears them with []', () => {
     const s = createSite(deps, { ...base, headers: [{ name: 'Cookie', value: 'v' }] })
     expect(updateSite(deps, s.id, { ...base, name: 'renamed' }).headerNames).toEqual(['Cookie'])
