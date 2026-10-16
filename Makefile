@@ -8,6 +8,11 @@ export
 SAKUDA_PORT    ?= 3001
 SAKUDA_BIND    ?= 127.0.0.1
 JUICESHOP_PORT ?= 4001
+# Auth capture (#17): DevTools port and a dedicated profile for the host
+# Chrome that sakuda drives (Chrome refuses remote debugging on the default
+# profile, and a separate profile keeps your everyday logins out of reach).
+CAPTURE_CDP_PORT ?= 9222
+CAPTURE_PROFILE  ?= $(HOME)/.sakuda/capture-profile
 COMPOSE        ?= docker compose
 # Juice Shop is its own compose project (targets/juice-shop/compose.yml), so
 # sakuda's down/reset never touch it. Compose looks for .env next to the
@@ -16,7 +21,7 @@ COMPOSE        ?= docker compose
 JUICE_COMPOSE  ?= $(COMPOSE) $(if $(wildcard .env),--env-file .env) -f targets/juice-shop/compose.yml
 
 .DEFAULT_GOAL := help
-.PHONY: help env keygen build up down restart logs ps open juice-up juice-down juice-seed \
+.PHONY: help env keygen build up down restart logs ps open capture-browser juice-up juice-down juice-seed \
         dev test e2e lint typecheck check clean reset-data
 
 help: ## Show this help
@@ -61,6 +66,19 @@ ps: ## Show container status (sakuda, then Juice Shop)
 
 open: ## Open the UI in the browser
 	open "http://localhost:$(SAKUDA_PORT)"
+
+capture-browser: ## Start a Chrome that sakuda can drive for "Log in with browser" (Edit site → Authentication)
+	@mkdir -p "$(CAPTURE_PROFILE)"
+	@if [ "$$(uname)" = Darwin ]; then \
+	  open -na "Google Chrome" --args --remote-debugging-port=$(CAPTURE_CDP_PORT) \
+	    --user-data-dir="$(CAPTURE_PROFILE)" --no-first-run about:blank; \
+	else \
+	  bin="$$(command -v google-chrome || command -v chromium || command -v chromium-browser)"; \
+	  [ -n "$$bin" ] || { echo "Chrome/Chromium not found"; exit 1; }; \
+	  nohup "$$bin" --remote-debugging-port=$(CAPTURE_CDP_PORT) --user-data-dir="$(CAPTURE_PROFILE)" \
+	    --no-first-run about:blank >/dev/null 2>&1 & \
+	fi
+	@echo "capture browser: DevTools on 127.0.0.1:$(CAPTURE_CDP_PORT), profile $(CAPTURE_PROFILE)"
 
 juice-up: ## Start OWASP Juice Shop as a dry-run target (http://localhost:JUICESHOP_PORT)
 	$(JUICE_COMPOSE) up -d
