@@ -428,6 +428,35 @@ restart: the old key gets 401.
 - `SAKUDA_MCP_API_KEY` is no longer read. If it is still set, sakuda logs a
   warning at boot and ignores it — issue a key in the UI and remove it from `.env`.
 
+**Claude Desktop.** It has no field for a static header on a remote server, so
+bridge `/mcp` through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) in
+`~/Library/Application Support/Claude/claude_desktop_config.json` (issue a
+separate key, e.g. labelled `claude-desktop`), then restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "sakuda": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:3001/mcp",
+        "--header",
+        "Authorization:${SAKUDA_AUTH}"
+      ],
+      "env": { "SAKUDA_AUTH": "Bearer <key>" }
+    }
+  }
+}
+```
+
+The value goes through `env` because a space inside an argument can be split on
+some systems. If the log shows `Dynamic Client Registration rejected (HTTP 404)`
+for `/register`, the key was rejected: sakuda answered 401 and `mcp-remote` fell
+back to OAuth, which sakuda does not offer. Check that `SAKUDA_AUTH` starts with
+`Bearer ` and holds a live key.
+
 Tools: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`.
 
 - **Secrets are hidden by default.** Header, cookie and browser-storage values

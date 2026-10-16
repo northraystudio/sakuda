@@ -423,6 +423,35 @@ claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp
 - `SAKUDA_MCP_API_KEY` は読まなくなりました。設定が残っていると起動時に警告を出して
   無視します。UI でキーを発行し、`.env` から削除してください。
 
+**Claude Desktop。** リモートのサーバーに固定のヘッダーを付ける設定がないので、
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) で `/mcp` を中継します。
+`~/Library/Application Support/Claude/claude_desktop_config.json` に次のように書き
+（キーは `claude-desktop` などのラベルで別に発行）、Claude Desktop を再起動します。
+
+```json
+{
+  "mcpServers": {
+    "sakuda": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:3001/mcp",
+        "--header",
+        "Authorization:${SAKUDA_AUTH}"
+      ],
+      "env": { "SAKUDA_AUTH": "Bearer <キー>" }
+    }
+  }
+}
+```
+
+値を `env` に置くのは、引数の中の空白で分割される環境があるためです。ログに
+`/register` の `Dynamic Client Registration rejected (HTTP 404)` が出たら、キーが
+拒否されています。sakuda が 401 を返し、`mcp-remote` が OAuth に切り替えようとした
+結果で、sakuda は OAuth を提供していません。`SAKUDA_AUTH` が `Bearer ` で始まり、
+有効なキーが入っているか確かめてください。
+
 ツール: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`。
 
 - **秘密値は既定で伏せ字。** サイトに設定したヘッダ・Cookie・ブラウザストレージの値は
