@@ -20,6 +20,7 @@ import type {
   RequestShape,
   SiteListItem,
   SitePublic,
+  SiteSecrets,
 } from '#shared/types/api'
 
 export { toSitePublic, toSiteSnapshot } from '../domain/siteView'
@@ -356,6 +357,13 @@ export function listSites(db: Db): SiteListItem[] {
     .orderBy(desc(sites.updatedAt))
     .all()
     .map((r) => ({ ...toSitePublic(r), lastScan: latestScanSummary(db, r.id) }))
+}
+
+/** Decrypted values for the edit form's show/hide toggle (#17). The route
+ * guards it to loopback callers; this function only reads. */
+export function getSiteSecrets(deps: SiteServiceDeps, id: string): SiteSecrets | null {
+  const site = loadSiteWithHeaders(deps, id)
+  return site ? { headers: site.headers, browserStorage: site.browserStorage } : null
 }
 
 export function loadSiteWithHeaders(deps: SiteServiceDeps, id: string): SiteWithHeaders | null {

@@ -4,8 +4,9 @@ import type { BrowserStorageKind, BrowserStoragePatch } from '#shared/schemas/br
 import { BROWSER_STORAGE_KINDS } from '#shared/schemas/browserStorage'
 import type { HeaderPatch } from '#shared/schemas/headers'
 import type { SiteUpdateInput } from '#shared/schemas/site'
-import type { RiskTag, SitePublic } from '#shared/types/api'
+import type { RiskTag, SitePublic, SiteSecrets } from '#shared/types/api'
 import { parseSeedPathLines } from '#shared/utils/seedPaths'
+import SecretRevealButton from './SecretRevealButton.vue'
 
 const props = defineProps<{
   initial?: SitePublic
@@ -13,6 +14,9 @@ const props = defineProps<{
   errorMessage: string | null
   /** Where "Cancel" goes; no link is rendered when omitted. */
   cancelTo?: string
+  /** Fetches the stored header / storage values for the show/hide toggle
+   * (#17). Called lazily on the first reveal of a stored row, never on load. */
+  loadSecrets?: () => Promise<SiteSecrets>
 }>()
 
 /** In create mode every header row carries its value, so the payload is
@@ -111,13 +115,20 @@ const requiresConfirmation = computed(() => {
 // `storedName` is the name the row was created from (null for rows the user
 // added). It is what lets a renamed stored row be told apart from a new,
 // half-typed one — matching on the current name alone cannot do that.
-type HeaderRow = { name: string; value: string; storedName: string | null }
+// `revealed` is the show/hide toggle (#17): the value input switches
+// between password and text.
+type HeaderRow = { name: string; value: string; storedName: string | null; revealed: boolean }
 const headerRows = reactive<HeaderRow[]>(
-  (props.initial?.headerNames ?? []).map((name) => ({ name, value: '', storedName: name })),
+  (props.initial?.headerNames ?? []).map((name) => ({
+    name,
+    value: '',
+    storedName: name,
+    revealed: false,
+  })),
 )
 
 function addHeaderRow() {
-  headerRows.push({ name: '', value: '', storedName: null })
+  headerRows.push({ name: '', value: '', storedName: null, revealed: false })
 }
 
 function removeHeaderRow(index: number) {
@@ -159,6 +170,7 @@ type StorageRow = {
   name: string
   value: string
   storedKey: string | null
+  revealed: boolean
 }
 const storageKey = (i: { kind: string; name: string }) => `${i.kind}\n${i.name}`
 const storageRows = reactive<StorageRow[]>(
@@ -167,11 +179,12 @@ const storageRows = reactive<StorageRow[]>(
     name: i.name,
     value: '',
     storedKey: storageKey(i),
+    revealed: false,
   })),
 )
 
 function addStorageRow() {
-  storageRows.push({ kind: 'localStorage', name: '', value: '', storedKey: null })
+  storageRows.push({ kind: 'localStorage', name: '', value: '', storedKey: null, revealed: false })
 }
 
 function removeStorageRow(index: number) {
@@ -181,6 +194,53 @@ function removeStorageRow(index: number) {
 /** A stored row whose kind and name are untouched — see `isStoredHeader`. */
 function isStoredStorage(row: StorageRow): boolean {
   return row.storedKey !== null && storageKey(row) === row.storedKey
+}
+
+// Show/hide toggle (#17). Revealing a stored row whose input is still empty
+// fills it with the stored value, fetched once on first use — so a copy-paste
+// mistake can be spotted. Saving afterwards re-sends the same value, which
+// the update merge treats like any typed value.
+let secretsPromise: Promise<SiteSecrets> | null = null
+const secretsError = ref<string | null>(null)
+
+async function storedSecrets(): Promise<SiteSecrets | null> {
+  if (!props.loadSecrets) return null
+  secretsPromise ??= props.loadSecrets()
+  try {
+    return await secretsPromise
+  } catch (err) {
+    secretsPromise = null // let the next click retry
+    secretsError.value = `Could not load stored values: ${toApiErrorMessage(err)}`
+    return null
+  }
+}
+
+async function toggleHeaderReveal(row: HeaderRow) {
+  if (row.revealed) {
+    row.revealed = false
+    return
+  }
+  secretsError.value = null
+  if (row.storedName !== null && row.value === '') {
+    const secrets = await storedSecrets()
+    if (!secrets) return
+    row.value = secrets.headers.find((h) => h.name === row.storedName)?.value ?? ''
+  }
+  row.revealed = true
+}
+
+async function toggleStorageReveal(row: StorageRow) {
+  if (row.revealed) {
+    row.revealed = false
+    return
+  }
+  secretsError.value = null
+  if (row.storedKey !== null && row.value === '') {
+    const secrets = await storedSecrets()
+    if (!secrets) return
+    row.value = secrets.browserStorage.find((i) => storageKey(i) === row.storedKey)?.value ?? ''
+  }
+  row.revealed = true
 }
 
 // Mirrors toHeaderPatch: a stored row is never dropped (that would delete
@@ -406,12 +466,16 @@ function handleSubmit() {
         <span class="text-caption-md font-medium text-ink">Headers</span>
         <p class="text-caption-sm text-mute">
           Sent with every request by every engine (e.g. "Authorization: Bearer …", "Cookie: …").
-          Stored encrypted, never shown again.
+          Stored encrypted; use the eye button to check a stored value.
         </p>
 
         <p v-if="isEditMode" class="text-caption-sm text-mute">
           Leave a value empty to keep the stored one; type a new value to replace it. Remove a row
           to delete that header. Renaming a stored header requires its value.
+        </p>
+
+        <p v-if="secretsError" data-testid="secrets-error" class="text-caption-sm text-sale">
+          {{ secretsError }}
         </p>
 
         <div data-testid="headers-editor" class="flex flex-col gap-3">
@@ -430,10 +494,16 @@ function handleSubmit() {
             <input
               v-model="row.value"
               :data-testid="`header-value-${index}`"
-              type="password"
+              :type="row.revealed ? 'text' : 'password'"
               autocomplete="off"
               :placeholder="isStoredHeader(row) ? 'unchanged' : 'Header value'"
               class="input-pill"
+            />
+            <SecretRevealButton
+              :data-testid="`reveal-header-${index}`"
+              :revealed="row.revealed"
+              :label="`value of ${row.name || 'header'}`"
+              @toggle="toggleHeaderReveal(row)"
             />
             <button
               type="button"
@@ -460,7 +530,8 @@ function handleSubmit() {
         <p class="text-caption-sm text-mute">
           Values seeded into ZAP's browser (localStorage / sessionStorage / cookie) before the Ajax
           spider crawls, so a single-page app renders as logged in. Headers (above) authenticate
-          requests; this authenticates the UI. Stored encrypted, never shown again.
+          requests; this authenticates the UI. Stored encrypted; use the eye button to check a
+          stored value.
         </p>
 
         <p v-if="isEditMode" class="text-caption-sm text-mute">
@@ -489,10 +560,16 @@ function handleSubmit() {
             <input
               v-model="row.value"
               :data-testid="`storage-value-${index}`"
-              type="password"
+              :type="row.revealed ? 'text' : 'password'"
               autocomplete="off"
               :placeholder="isStoredStorage(row) ? 'unchanged' : 'Value'"
               class="input-pill"
+            />
+            <SecretRevealButton
+              :data-testid="`reveal-storage-${index}`"
+              :revealed="row.revealed"
+              :label="`value of ${row.name || 'item'}`"
+              @toggle="toggleStorageReveal(row)"
             />
             <button
               type="button"

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import SiteForm from '~/components/site/SiteForm.vue'
 import { buttonElement, inputElement } from '../helpers/dom'
@@ -8,7 +9,7 @@ import {
   type SiteInput,
   type SiteUpdateInput,
 } from '#shared/schemas/site'
-import type { SitePublic } from '#shared/types/api'
+import type { SitePublic, SiteSecrets } from '#shared/types/api'
 
 const editSite: SitePublic = {
   id: 'site-1',
@@ -746,6 +747,75 @@ describe('SiteForm', () => {
       await wrapper.find('[data-testid="discovery-seed-paths"]').setValue('/#/basket')
       expect(wrapper.find('[data-testid="discovery-start-error"]').exists()).toBe(false)
       expect(buttonElement(wrapper, '[data-testid="submit"]').disabled).toBe(false)
+    })
+  })
+
+  describe('show/hide toggle for stored values (#17)', () => {
+    const secrets: SiteSecrets = {
+      headers: [
+        { name: 'Authorization', value: 'Bearer stored-token' },
+        { name: 'X-Api-Key', value: 'stored-key' },
+      ],
+      browserStorage: [{ kind: 'localStorage', name: 'token', value: 'eyJ.stored' }],
+    }
+    const site = {
+      ...editSite,
+      browserStorageNames: [{ kind: 'localStorage' as const, name: 'token' }],
+    }
+
+    async function mountWith(loadSecrets: () => Promise<SiteSecrets>) {
+      return mountSuspended(SiteForm, {
+        props: { initial: site, submitting: false, errorMessage: null, loadSecrets },
+      })
+    }
+
+    it('does not fetch on load; the first reveal fetches once and shows the stored value as text', async () => {
+      const loadSecrets = vi.fn().mockResolvedValue(secrets)
+      const wrapper = await mountWith(loadSecrets)
+      expect(loadSecrets).not.toHaveBeenCalled()
+
+      await wrapper.find('[data-testid="reveal-header-0"]').trigger('click')
+      await flushPromises()
+      const value = wrapper.find('[data-testid="header-value-0"]')
+      expect(value.attributes('type')).toBe('text')
+      expect(inputElement(wrapper, '[data-testid="header-value-0"]').value).toBe(
+        'Bearer stored-token',
+      )
+      expect(wrapper.find('[data-testid="reveal-header-0"]').attributes('aria-pressed')).toBe(
+        'true',
+      )
+
+      await wrapper.find('[data-testid="reveal-storage-0"]').trigger('click')
+      await flushPromises()
+      expect(inputElement(wrapper, '[data-testid="storage-value-0"]').value).toBe('eyJ.stored')
+      expect(loadSecrets).toHaveBeenCalledTimes(1)
+    })
+
+    it('hiding switches back to a password input and keeps a typed value untouched', async () => {
+      const loadSecrets = vi.fn().mockResolvedValue(secrets)
+      const wrapper = await mountWith(loadSecrets)
+      await wrapper.find('[data-testid="header-value-1"]').setValue('typed-key')
+      await wrapper.find('[data-testid="reveal-header-1"]').trigger('click')
+      await flushPromises()
+      expect(inputElement(wrapper, '[data-testid="header-value-1"]').value).toBe('typed-key')
+      expect(loadSecrets).not.toHaveBeenCalled()
+
+      await wrapper.find('[data-testid="reveal-header-1"]').trigger('click')
+      expect(wrapper.find('[data-testid="header-value-1"]').attributes('type')).toBe('password')
+      expect(wrapper.find('[data-testid="reveal-header-1"]').attributes('aria-pressed')).toBe(
+        'false',
+      )
+    })
+
+    it('shows an error and stays hidden when loading fails', async () => {
+      const loadSecrets = vi.fn().mockRejectedValue(new Error('boom'))
+      const wrapper = await mountWith(loadSecrets)
+      await wrapper.find('[data-testid="reveal-header-0"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-testid="secrets-error"]').text()).toContain(
+        'Could not load stored values',
+      )
+      expect(wrapper.find('[data-testid="header-value-0"]').attributes('type')).toBe('password')
     })
   })
 })

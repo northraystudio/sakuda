@@ -17,6 +17,7 @@ import {
   createSite,
   deleteSite,
   getSite,
+  getSiteSecrets,
   listSites,
   loadSiteWithHeaders,
   removeSiteTarget,
@@ -52,6 +53,19 @@ describe('siteService', () => {
     expect(loadSiteWithHeaders(deps, s.id)?.headers).toEqual([
       { name: 'Cookie', value: 'secret=1' },
     ])
+  })
+
+  it('getSiteSecrets returns the decrypted header and storage values (#17)', () => {
+    const s = createSite(deps, {
+      ...base,
+      headers: [{ name: 'Authorization', value: 'Bearer t' }],
+      browserStorage: [{ kind: 'localStorage', name: 'token', value: 'eyJ.x' }],
+    })
+    expect(getSiteSecrets(deps, s.id)).toEqual({
+      headers: [{ name: 'Authorization', value: 'Bearer t' }],
+      browserStorage: [{ kind: 'localStorage', name: 'token', value: 'eyJ.x' }],
+    })
+    expect(getSiteSecrets(deps, 'missing')).toBeNull()
   })
 
   it('update keeps headers when omitted and clears them with []', () => {

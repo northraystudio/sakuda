@@ -21,6 +21,10 @@
 @utility btn-secondary {
   @apply inline-flex h-12 items-center justify-center rounded-full bg-soft-cloud px-8 text-button-md font-medium text-ink disabled:opacity-40;
 }
+/* {component.button-icon-circular} */
+@utility btn-icon {
+  @apply inline-flex h-10 w-10 items-center justify-center rounded-full bg-soft-cloud text-ink disabled:opacity-40;
+}
 /* {component.search-pill} */
 @utility input-pill {
   @apply h-10 w-full rounded-md bg-soft-cloud px-4 text-body-md text-ink outline-none focus:bg-canvas focus:ring-1 focus:ring-ink;

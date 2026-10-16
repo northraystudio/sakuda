@@ -1,4 +1,5 @@
-import type { BrowserStorageName } from '../schemas/browserStorage'
+import type { BrowserStorageItem, BrowserStorageName } from '../schemas/browserStorage'
+import type { Header } from '../schemas/headers'
 import type { TargetMethod } from '../utils/nucleiPaths'
 
 export type Engine = 'nuclei' | 'zap-api' | 'zap-fe' | 'dalfox'
@@ -53,6 +54,13 @@ export interface SitePublic {
 }
 /** One approved non-GET target's saved request shape: the observed media type
  * (media type only, not a secret) plus the value-free body shape. */
+/** Decrypted header / browser-storage values of one site, returned only by
+ * the loopback-guarded `GET /api/sites/:id/secrets` (#17 — the edit form's
+ * show/hide toggle). */
+export interface SiteSecrets {
+  headers: Header[]
+  browserStorage: BrowserStorageItem[]
+}
 export interface RequestShape {
   contentType: string | null
   bodyShape: BodyShape
