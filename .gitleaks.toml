@@ -12,3 +12,10 @@ useDefault = true
 # regexes = [
 #     '''^0123456789abcdef0123456789abcdef$''',
 # ]
+
+[allowlist]
+description = "Deterministic test fixtures that are not credentials"
+regexes = [
+    # server/mcp/__tests__/tools.spec.ts (#16): a fake bearer token the redaction tests look for
+    '''^tok-0123456789$''',
+]
