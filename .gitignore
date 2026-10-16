@@ -14,3 +14,6 @@ data/
 *.db-wal
 *.db-shm
 .DS_Store
+
+# Security-audit reports stay local (not published).
+docs/security-audit/
