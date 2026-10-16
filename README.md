@@ -419,7 +419,8 @@ recovered. Reissue and revoke take effect on the next request, without a
 restart: the old key gets 401.
 
 - **No key issued:** `/mcp` accepts loopback requests without auth, and secrets
-  are always hidden.
+  are always hidden. A request that does send a key is still checked, so a
+  revoked key gets 401 even after the last key is gone.
 - **One or more keys issued:** every MCP request must send a valid key (401
   otherwise), and `reveal` becomes available.
 - `SAKUDA_MCP_API_KEY` is no longer read. If it is still set, sakuda logs a

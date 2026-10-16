@@ -11,15 +11,15 @@ function keys(...valid: string[]): McpKeyLookup {
 describe('checkMcpRequest', () => {
   const loopback = { host: '127.0.0.1:3001', origin: null }
 
-  it('with no issued key: allowed but never authenticated', () => {
+  it('with no issued key: a keyless request is allowed but never authenticated', () => {
     expect(checkMcpRequest({ ...loopback, authorization: null }, keys())).toEqual({
       ok: true,
       authenticated: false,
     })
-    // A stray header must not turn into authentication when no key exists.
-    expect(checkMcpRequest({ ...loopback, authorization: `Bearer ${KEY}` }, keys())).toEqual({
-      ok: true,
-      authenticated: false,
+    // A sent key is always checked: one revoked with the last key is still 401.
+    expect(checkMcpRequest({ ...loopback, authorization: `Bearer ${KEY}` }, keys())).toMatchObject({
+      ok: false,
+      status: 401,
     })
   })
 
