@@ -188,6 +188,18 @@ describe('captureTab', () => {
     })
   })
 
+  it('reports malformed storage JSON (page tampered with its globals) as CDP_PROTOCOL', async () => {
+    stubFetch({ '/json/list': list })
+    vi.stubGlobal(
+      'WebSocket',
+      fakeWebSocket(() => ({ result: { type: 'string', value: '{"token":"eyJ.secret' } }), opened),
+    )
+    const err = await captureTab(TARGET, 'http://localhost:3000', [], OPTS).catch((e: unknown) => e)
+    expect(err).toMatchObject({ code: 'CDP_PROTOCOL' })
+    // V8's SyntaxError quotes its input — the storage secret must not leak.
+    expect(String(err)).not.toContain('eyJ.secret')
+  })
+
   it('reports a closed tab as TAB_NOT_FOUND', async () => {
     stubFetch({ '/json/list': () => Response.json([]) })
     await expect(captureTab(TARGET, 'http://localhost:3000', [], OPTS)).rejects.toMatchObject({

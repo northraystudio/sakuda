@@ -270,7 +270,15 @@ function parseStorage(result: unknown): {
   const value = evaluatedValue(result)
   if (typeof value !== 'string')
     throw new CdpError('CDP_PROTOCOL', 'storage read returned no value')
-  const parsed: unknown = JSON.parse(value)
+  // The page can tamper with its own JSON/Storage globals, so malformed
+  // output is a protocol failure, not an unhandled SyntaxError. The
+  // SyntaxError is not passed on: V8 quotes the input, i.e. storage secrets.
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    throw new CdpError('CDP_PROTOCOL', 'storage read returned malformed JSON')
+  }
   if (
     typeof parsed !== 'object' ||
     parsed === null ||
