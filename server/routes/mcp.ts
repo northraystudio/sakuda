@@ -16,9 +16,10 @@ import { createSakudaMcpServer } from '../mcp/tools'
 import { mcpKeyLookup } from '../services/mcpKeyService'
 
 /**
- * Read-only MCP endpoint (#16), Streamable HTTP in stateless mode: a fresh
- * server and transport per request, JSON responses instead of SSE. The tools
- * only read through the existing services.
+ * MCP endpoint (#16 read, #18 write), Streamable HTTP in stateless mode: a
+ * fresh server and transport per request, JSON responses instead of SSE. The
+ * tools go through the same services (and so the same validation and scan
+ * gates) as the REST API.
  */
 export default defineEventHandler(async (event) => {
   // A `reveal: true` response carries real secrets — never let it be cached.

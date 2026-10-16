@@ -71,6 +71,13 @@
       "when": 1792160130100,
       "tag": "0009_mcp_api_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792174409271,
+      "tag": "0010_finding_triage",
+      "breakpoints": true
     }
   ]
 }

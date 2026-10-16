@@ -114,7 +114,9 @@ describe('buildEngineCountConfig', () => {
 
 describe('buildDiffTrendConfig', () => {
   it('stacks new/persisting positively and resolved as negative values', () => {
-    const point = historyPointFixture({ diff: { new: 2, persisting: 5, resolved: 3 } })
+    const point = historyPointFixture({
+      diff: { new: 2, persisting: 5, resolved: 3, suppressed: 0 },
+    })
     const config = buildDiffTrendConfig([point], palette)
 
     expect(config.data.datasets.map((d) => d.label)).toEqual(['New', 'Persisting', 'Resolved'])

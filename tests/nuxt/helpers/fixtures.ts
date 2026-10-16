@@ -42,6 +42,7 @@ export function findingFixture(overrides: Partial<FindingView> = {}): FindingVie
     reference: null,
     fingerprint: 'fp-1',
     isNew: false,
+    triage: null,
     ...overrides,
   }
 }
