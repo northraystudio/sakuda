@@ -64,6 +64,25 @@ export interface SiteSecrets {
   headers: Header[]
   browserStorage: BrowserStorageItem[]
 }
+/** Auth capture (#17): the login tab opened in the host Chrome. */
+export interface CaptureStart {
+  targetId: string
+}
+/** One captured value, proposed as an edit-form row; `expiresAt` is a
+ * cookie's `expires` (or the earliest one, for the combined Cookie header). */
+export interface CapturedHeader extends Header {
+  expiresAt?: string
+}
+export interface CapturedStorageItem extends BrowserStorageItem {
+  expiresAt?: string
+}
+/** Rows proposed by a capture. Nothing is saved until the form is. */
+export interface CaptureResult {
+  headers: CapturedHeader[]
+  browserStorage: CapturedStorageItem[]
+  /** Values that could not become a row (invalid for the schema, over the limit). */
+  skipped: { item: string; reason: string }[]
+}
 export interface RequestShape {
   contentType: string | null
   bodyShape: BodyShape

@@ -105,6 +105,13 @@ const EnvSchema = z.object({
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),
     z.string().min(16, 'SAKUDA_MCP_API_KEY must be at least 16 characters').optional(),
   ),
+  // Chrome DevTools endpoint of the host browser used for auth capture (#17).
+  // Only ever read from env, never from a request (no SSRF). Docker sets it to
+  // host.docker.internal via docker-compose.yml; dev on the host uses loopback.
+  SAKUDA_CAPTURE_CDP_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:9222'),
+  ),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 })
 
@@ -150,6 +157,8 @@ export interface Env {
   jobRunner: boolean
   /** Bearer key for /mcp; also the only way MCP may reveal secret values. */
   mcpApiKey: string | undefined
+  /** DevTools HTTP endpoint of the host Chrome used for auth capture (#17). */
+  captureCdpUrl: string
   logLevel: 'debug' | 'info' | 'warn' | 'error'
 }
 
@@ -198,6 +207,7 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
     engineGraceMinutes: v.SAKUDA_ENGINE_GRACE_MINUTES,
     jobRunner: v.SAKUDA_JOB_RUNNER === 'on',
     mcpApiKey: v.SAKUDA_MCP_API_KEY,
+    captureCdpUrl: v.SAKUDA_CAPTURE_CDP_URL.replace(/\/+$/, ''),
     logLevel: v.LOG_LEVEL,
   }
 }

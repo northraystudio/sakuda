@@ -136,4 +136,19 @@ describe('SAKUDA_NUCLEI_DAST_TEMPLATES', () => {
       /at least 16/,
     )
   })
+  it('SAKUDA_CAPTURE_CDP_URL defaults to loopback, accepts http(s) only, trims a trailing slash (#17)', () => {
+    expect(parseEnv({ SAKUDA_ENCRYPTION_KEY: key }).captureCdpUrl).toBe('http://127.0.0.1:9222')
+    expect(parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_CAPTURE_CDP_URL: '' }).captureCdpUrl).toBe(
+      'http://127.0.0.1:9222',
+    )
+    expect(
+      parseEnv({
+        SAKUDA_ENCRYPTION_KEY: key,
+        SAKUDA_CAPTURE_CDP_URL: 'http://host.docker.internal:9222/',
+      }).captureCdpUrl,
+    ).toBe('http://host.docker.internal:9222')
+    expect(() =>
+      parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_CAPTURE_CDP_URL: 'file:///etc/passwd' }),
+    ).toThrow(EnvError)
+  })
 })

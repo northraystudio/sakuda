@@ -9,7 +9,7 @@ import {
   type SiteInput,
   type SiteUpdateInput,
 } from '#shared/schemas/site'
-import type { SitePublic, SiteSecrets } from '#shared/types/api'
+import type { CaptureResult, SitePublic, SiteSecrets } from '#shared/types/api'
 
 const editSite: SitePublic = {
   id: 'site-1',
@@ -817,6 +817,95 @@ describe('SiteForm', () => {
         'Could not load stored values',
       )
       expect(wrapper.find('[data-testid="header-value-0"]').attributes('type')).toBe('password')
+    })
+  })
+
+  describe('auth capture (#17)', () => {
+    const TARGET = 'A1B2C3D4E5F60718293A4B5C6D7E8F90'
+    const result: CaptureResult = {
+      headers: [
+        { name: 'Authorization', value: 'Bearer captured', expiresAt: '2027-01-01T00:00:00.000Z' },
+        { name: 'Cookie', value: 'sid=s1' },
+      ],
+      browserStorage: [
+        { kind: 'cookie', name: 'sid', value: 's1', expiresAt: '2026-12-01T00:00:00.000Z' },
+      ],
+      skipped: [{ item: 'localStorage:big', reason: 'too long' }],
+    }
+
+    async function mountCapture(finish = vi.fn().mockResolvedValue(result)) {
+      const start = vi.fn().mockResolvedValue({ targetId: TARGET })
+      const wrapper = await mountSuspended(SiteForm, {
+        props: {
+          initial: editSite,
+          submitting: false,
+          errorMessage: null,
+          capture: { start, finish },
+        },
+      })
+      return { wrapper, start, finish }
+    }
+
+    it('has no capture panel without the capture prop (create form)', async () => {
+      const wrapper = await mountSuspended(SiteForm, {
+        props: { submitting: false, errorMessage: null },
+      })
+      expect(wrapper.find('[data-testid="capture-panel"]').exists()).toBe(false)
+    })
+
+    it('start → Capture fills matching rows, appends new ones, and lists what was skipped', async () => {
+      const { wrapper, start, finish } = await mountCapture()
+      expect(wrapper.find('[data-testid="capture-finish"]').exists()).toBe(false)
+      await wrapper.find('[data-testid="capture-start"]').trigger('click')
+      await flushPromises()
+      expect(start).toHaveBeenCalledOnce()
+      await wrapper.find('[data-testid="capture-finish"]').trigger('click')
+      await flushPromises()
+      expect(finish).toHaveBeenCalledWith(TARGET)
+
+      // stored "Authorization" row is filled in place; Cookie is appended
+      expect(inputElement(wrapper, '[data-testid="header-value-0"]').value).toBe('Bearer captured')
+      expect(inputElement(wrapper, '[data-testid="header-name-2"]').value).toBe('Cookie')
+      expect(inputElement(wrapper, '[data-testid="storage-name-0"]').value).toBe('sid')
+      expect(wrapper.find('[data-testid="header-expiry-0"]').text()).toContain('2027-01-01')
+      expect(wrapper.find('[data-testid="capture-skipped"]').text()).toContain('localStorage:big')
+      expect(wrapper.find('[data-testid="capture-finish"]').exists()).toBe(false)
+
+      await wrapper.find('[data-testid="site-form"]').trigger('submit')
+      const payload = emittedUpdate(wrapper)
+      expect(payload.headers).toEqual([
+        { name: 'Authorization', value: 'Bearer captured', expiresAt: '2027-01-01T00:00:00.000Z' },
+        { name: 'X-Api-Key' },
+        { name: 'Cookie', value: 'sid=s1' },
+      ])
+      expect(payload.browserStorage).toEqual([
+        { kind: 'cookie', name: 'sid', value: 's1', expiresAt: '2026-12-01T00:00:00.000Z' },
+      ])
+    })
+
+    it('drops the captured expiry once the value is edited by hand', async () => {
+      const { wrapper } = await mountCapture()
+      await wrapper.find('[data-testid="capture-start"]').trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-testid="capture-finish"]').trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-testid="header-value-0"]').setValue('Bearer typed')
+      await wrapper.find('[data-testid="site-form"]').trigger('submit')
+      expect(emittedUpdate(wrapper).headers?.[0]).toEqual({
+        name: 'Authorization',
+        value: 'Bearer typed',
+      })
+    })
+
+    it('shows the server error (e.g. Chrome not started) and keeps the rows untouched', async () => {
+      const finish = vi.fn().mockRejectedValue(new Error('capture browser not reachable'))
+      const { wrapper } = await mountCapture(finish)
+      await wrapper.find('[data-testid="capture-start"]').trigger('click')
+      await flushPromises()
+      await wrapper.find('[data-testid="capture-finish"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-testid="capture-error"]').exists()).toBe(true)
+      expect(inputElement(wrapper, '[data-testid="header-value-0"]').value).toBe('')
     })
   })
 })

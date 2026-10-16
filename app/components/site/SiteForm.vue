@@ -4,9 +4,18 @@ import type { BrowserStorageKind, BrowserStoragePatch } from '#shared/schemas/br
 import { BROWSER_STORAGE_KINDS } from '#shared/schemas/browserStorage'
 import type { HeaderPatch } from '#shared/schemas/headers'
 import type { SiteUpdateInput } from '#shared/schemas/site'
-import type { RiskTag, SitePublic, SiteSecrets } from '#shared/types/api'
+import type {
+  CapturedHeader,
+  CapturedStorageItem,
+  CaptureResult,
+  CaptureStart,
+  RiskTag,
+  SitePublic,
+  SiteSecrets,
+} from '#shared/types/api'
 import { parseSeedPathLines } from '#shared/utils/seedPaths'
 import SecretRevealButton from './SecretRevealButton.vue'
+import { secretKey } from '#shared/utils/secretExpiry'
 
 const props = defineProps<{
   initial?: SitePublic
@@ -17,6 +26,11 @@ const props = defineProps<{
   /** Fetches the stored header / storage values for the show/hide toggle
    * (#17). Called lazily on the first reveal of a stored row, never on load. */
   loadSecrets?: () => Promise<SiteSecrets>
+  /** Auth capture through the host Chrome (#17); edit mode only. */
+  capture?: {
+    start: () => Promise<CaptureStart>
+    finish: (targetId: string) => Promise<CaptureResult>
+  }
 }>()
 
 /** In create mode every header row carries its value, so the payload is
@@ -116,8 +130,16 @@ const requiresConfirmation = computed(() => {
 // added). It is what lets a renamed stored row be told apart from a new,
 // half-typed one — matching on the current name alone cannot do that.
 // `revealed` is the show/hide toggle (#17): the value input switches
-// between password and text.
-type HeaderRow = { name: string; value: string; storedName: string | null; revealed: boolean }
+// between password and text. `captured` is set when a capture filled the
+// row: its expiry is sent only while the value is still the captured one.
+type Captured = { value: string; expiresAt?: string }
+type HeaderRow = {
+  name: string
+  value: string
+  storedName: string | null
+  revealed: boolean
+  captured?: Captured
+}
 const headerRows = reactive<HeaderRow[]>(
   (props.initial?.headerNames ?? []).map((name) => ({
     name,
@@ -152,10 +174,16 @@ function emptyToNull(value: string): string | null {
 // does not — the only place that can tell, since the UI never sees values.
 // A new row the user hasn't finished typing (no name, or no value) is dropped
 // rather than submitted, since a server-side error would be confusing there.
+/** A captured expiry still describes the row only while its value is untouched. */
+function capturedExpiry(row: HeaderRow | StorageRow): { expiresAt: string } | object {
+  const c = row.captured
+  return c?.expiresAt && c.value === row.value ? { expiresAt: c.expiresAt } : {}
+}
+
 function toHeaderPatch(row: HeaderRow): HeaderPatch | null {
   const isNewRow = row.storedName === null
   if (isNewRow && row.name.trim() === '') return null
-  if (row.value.trim() !== '') return { name: row.name, value: row.value }
+  if (row.value.trim() !== '') return { name: row.name, value: row.value, ...capturedExpiry(row) }
   return isNewRow ? null : { name: row.name }
 }
 
@@ -171,6 +199,7 @@ type StorageRow = {
   value: string
   storedKey: string | null
   revealed: boolean
+  captured?: Captured
 }
 const storageKey = (i: { kind: string; name: string }) => `${i.kind}\n${i.name}`
 const storageRows = reactive<StorageRow[]>(
@@ -243,12 +272,91 @@ async function toggleStorageReveal(row: StorageRow) {
   row.revealed = true
 }
 
+// Auth capture (#17): "Log in with browser" opens the site in the host
+// Chrome; "Capture" reads that tab and fills rows — replacing the value of a
+// row with the same name, appending the rest. Nothing is saved until the
+// form is, so the user can drop rows they do not want.
+const captureTargetId = ref<string | null>(null)
+const captureBusy = ref(false)
+const captureError = ref<string | null>(null)
+const captureNote = ref<string | null>(null)
+const captureSkipped = ref<CaptureResult['skipped']>([])
+
+async function startCaptureLogin() {
+  if (!props.capture) return
+  captureBusy.value = true
+  captureError.value = null
+  captureNote.value = null
+  try {
+    captureTargetId.value = (await props.capture.start()).targetId
+    captureNote.value = 'Log in in the Chrome window that just opened, then press Capture.'
+  } catch (err) {
+    captureError.value = toApiErrorMessage(err)
+  } finally {
+    captureBusy.value = false
+  }
+}
+
+function applyCapturedHeader(h: CapturedHeader) {
+  const captured = { value: h.value, ...(h.expiresAt && { expiresAt: h.expiresAt }) }
+  const row = headerRows.find((r) => r.name === h.name)
+  if (row) Object.assign(row, { value: h.value, captured })
+  else
+    headerRows.push({ name: h.name, value: h.value, storedName: null, revealed: false, captured })
+}
+
+function applyCapturedStorage(i: CapturedStorageItem) {
+  const captured = { value: i.value, ...(i.expiresAt && { expiresAt: i.expiresAt }) }
+  const row = storageRows.find((r) => storageKey(r) === storageKey(i))
+  if (row) Object.assign(row, { value: i.value, captured })
+  else
+    storageRows.push({
+      kind: i.kind,
+      name: i.name,
+      value: i.value,
+      storedKey: null,
+      revealed: false,
+      captured,
+    })
+}
+
+async function finishCaptureLogin() {
+  if (!props.capture || !captureTargetId.value) return
+  captureBusy.value = true
+  captureError.value = null
+  try {
+    const result = await props.capture.finish(captureTargetId.value)
+    result.headers.forEach(applyCapturedHeader)
+    result.browserStorage.forEach(applyCapturedStorage)
+    captureSkipped.value = result.skipped
+    captureTargetId.value = null
+    captureNote.value = `Captured ${result.headers.length} header(s) and ${result.browserStorage.length} storage item(s) into the rows below — review them (remove what you do not need), then save.`
+  } catch (err) {
+    captureError.value = toApiErrorMessage(err)
+  } finally {
+    captureBusy.value = false
+  }
+}
+
+/** Expiry shown next to a row: the captured one while the value is
+ * untouched, else the stored one while the row still means "keep stored". */
+function rowExpiry(row: HeaderRow | StorageRow): string | null {
+  const c = row.captured
+  if (c?.expiresAt && c.value === row.value) return c.expiresAt
+  if (row.value !== '') return null
+  const stored = 'kind' in row ? isStoredStorage(row) : isStoredHeader(row)
+  if (!stored) return null
+  const key = 'kind' in row ? secretKey(row) : secretKey({ name: row.name })
+  return props.initial?.secretExpiries[key] ?? null
+}
+
 // Mirrors toHeaderPatch: a stored row is never dropped (that would delete
 // it), a new half-typed row is.
 function toStoragePatch(row: StorageRow): BrowserStoragePatch | null {
   const isNewRow = row.storedKey === null
   if (isNewRow && row.name.trim() === '') return null
-  if (row.value.trim() !== '') return { kind: row.kind, name: row.name, value: row.value }
+  if (row.value.trim() !== '')
+    return { kind: row.kind, name: row.name, value: row.value, ...capturedExpiry(row) }
   return isNewRow ? null : { kind: row.kind, name: row.name }
 }
 
@@ -462,6 +570,52 @@ function handleSubmit() {
         will every engine.
       </p>
 
+      <div v-if="capture" data-testid="capture-panel" class="flex flex-col gap-3">
+        <span class="text-caption-md font-medium text-ink">Log in with a browser</span>
+        <p class="text-caption-sm text-mute">
+          Opens the site in a Chrome on this machine; after you log in, Capture fills the rows below
+          from its cookies and storage. Start that Chrome first with
+          <code class="font-mono">make capture-browser</code>.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          <button
+            type="button"
+            data-testid="capture-start"
+            class="btn-secondary"
+            :disabled="captureBusy"
+            @click="startCaptureLogin"
+          >
+            Log in with browser
+          </button>
+          <button
+            v-if="captureTargetId"
+            type="button"
+            data-testid="capture-finish"
+            class="btn-secondary"
+            :disabled="captureBusy"
+            @click="finishCaptureLogin"
+          >
+            Capture
+          </button>
+        </div>
+        <p v-if="captureNote" data-testid="capture-note" class="text-caption-sm text-ink">
+          {{ captureNote }}
+        </p>
+        <p v-if="captureError" data-testid="capture-error" class="text-caption-sm text-sale">
+          {{ captureError }}
+        </p>
+        <ul v-if="captureSkipped.length > 0" class="flex flex-col gap-1">
+          <li
+            v-for="item in captureSkipped"
+            :key="item.item"
+            data-testid="capture-skipped"
+            class="text-caption-sm text-mute"
+          >
+            Not captured: {{ item.item }} — {{ item.reason }}
+          </li>
+        </ul>
+      </div>
+
       <div class="flex flex-col gap-3">
         <span class="text-caption-md font-medium text-ink">Headers</span>
         <p class="text-caption-sm text-mute">
@@ -505,6 +659,13 @@ function handleSubmit() {
               :label="`value of ${row.name || 'header'}`"
               @toggle="toggleHeaderReveal(row)"
             />
+            <span
+              v-if="rowExpiry(row)"
+              :data-testid="`header-expiry-${index}`"
+              class="text-caption-sm text-mute shrink-0"
+            >
+              expires {{ rowExpiry(row) }}
+            </span>
             <button
               type="button"
               :data-testid="`remove-header-${index}`"
@@ -571,6 +732,13 @@ function handleSubmit() {
               :label="`value of ${row.name || 'item'}`"
               @toggle="toggleStorageReveal(row)"
             />
+            <span
+              v-if="rowExpiry(row)"
+              :data-testid="`storage-expiry-${index}`"
+              class="text-caption-sm text-mute shrink-0"
+            >
+              expires {{ rowExpiry(row) }}
+            </span>
             <button
               type="button"
               :data-testid="`remove-storage-${index}`"

@@ -59,7 +59,7 @@ export const BrowserStoragePatchSchema = z
     message: 'expiresAt requires a value',
   })
 
-const BROWSER_STORAGE_MAX = 20
+export const BROWSER_STORAGE_MAX = 20
 
 /** (kind, name) pairs are matched exactly (case-sensitive) — the same rule the
  * update merge uses — so two rows with the same pair would be ambiguous. */
