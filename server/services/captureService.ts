@@ -74,9 +74,10 @@ export async function finishCapture(
     {
       operation: 'capture.finish',
       siteId,
-      headers: result.headers.length,
-      browserStorage: result.browserStorage.length,
-      skipped: result.skipped.length,
+      // counts only — `headers` is a redacted log path (server/lib/logger)
+      headerCount: result.headers.length,
+      storageCount: result.browserStorage.length,
+      skippedCount: result.skipped.length,
     },
     'auth capture read',
   )
