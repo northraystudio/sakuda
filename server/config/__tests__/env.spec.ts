@@ -128,6 +128,10 @@ describe('SAKUDA_NUCLEI_DAST_TEMPLATES', () => {
     expect(
       parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: 'k'.repeat(16) }).mcpApiKey,
     ).toBe('k'.repeat(16))
+    expect(
+      parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: ` ${'k'.repeat(16)}\n` })
+        .mcpApiKey,
+    ).toBe('k'.repeat(16))
     expect(() => parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: 'short' })).toThrow(
       /at least 16/,
     )

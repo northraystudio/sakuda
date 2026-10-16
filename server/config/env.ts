@@ -99,8 +99,10 @@ const EnvSchema = z.object({
   SAKUDA_JOB_RUNNER: z.enum(['on', 'off']).default('on'),
   // Optional: unset keeps /mcp an unauthenticated loopback endpoint like the
   // rest of the API. A short key is a config mistake — fail fast (#16).
+  // Trimmed because the Bearer token is trimmed before comparison: a stray
+  // space in .env would otherwise lock every client out.
   SAKUDA_MCP_API_KEY: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
     z.string().min(16, 'SAKUDA_MCP_API_KEY must be at least 16 characters').optional(),
   ),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

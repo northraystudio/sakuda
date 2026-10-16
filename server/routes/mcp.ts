@@ -19,6 +19,8 @@ import { createSakudaMcpServer } from '../mcp/tools'
  * only read through the existing services.
  */
 export default defineEventHandler(async (event) => {
+  // A `reveal: true` response carries real secrets — never let it be cached.
+  setResponseHeader(event, 'cache-control', 'no-store')
   const env = getEnv()
   const auth = checkMcpRequest(
     {
