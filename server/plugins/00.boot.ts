@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
-import { EnvError, getEnv } from '../config/env'
+import { EnvError, getEnv, retiredEnvWarnings } from '../config/env'
 import { closeDb, getDb } from '../db/client'
 import { createSiteCipher } from '../domain/headerCipher'
 import { engineRunners } from '../engines'
@@ -20,6 +20,8 @@ export default defineNitroPlugin((nitroApp) => {
     if (e instanceof EnvError) logger.fatal({ err: e }, e.message)
     throw e // boot must still fail
   }
+  for (const message of retiredEnvWarnings(process.env))
+    logger.warn({ operation: 'boot.env' }, message)
 
   mkdirSync(env.scansDir, { recursive: true })
   mkdirSync(env.discoveriesDir, { recursive: true })

@@ -1,40 +1,49 @@
 import { describe, expect, it } from 'vitest'
 import { checkMcpRequest } from '../auth'
+import type { McpKeyLookup } from '../../services/mcpKeyService'
 
-const KEY = 'k'.repeat(32)
+const KEY = 'sakuda_' + 'k'.repeat(43)
+
+function keys(...valid: string[]): McpKeyLookup {
+  return { hasActiveKeys: () => valid.length > 0, isValidKey: (k) => valid.includes(k) }
+}
 
 describe('checkMcpRequest', () => {
   const loopback = { host: '127.0.0.1:3001', origin: null }
 
-  it('without a configured key: allowed but never authenticated', () => {
-    expect(checkMcpRequest({ ...loopback, authorization: null }, undefined)).toEqual({
+  it('with no issued key: a keyless request is allowed but never authenticated', () => {
+    expect(checkMcpRequest({ ...loopback, authorization: null }, keys())).toEqual({
       ok: true,
       authenticated: false,
     })
+    // A sent key is always checked: one revoked with the last key is still 401.
+    expect(checkMcpRequest({ ...loopback, authorization: `Bearer ${KEY}` }, keys())).toMatchObject({
+      ok: false,
+      status: 401,
+    })
   })
 
-  it('with a key: 401 when missing or wrong, authenticated when it matches', () => {
-    expect(checkMcpRequest({ ...loopback, authorization: null }, KEY)).toMatchObject({
-      ok: false,
-      status: 401,
-    })
-    expect(checkMcpRequest({ ...loopback, authorization: 'Bearer nope' }, KEY)).toMatchObject({
-      ok: false,
-      status: 401,
-    })
-    expect(checkMcpRequest({ ...loopback, authorization: `Basic ${KEY}` }, KEY)).toMatchObject({
-      ok: false,
-      status: 401,
-    })
-    expect(checkMcpRequest({ ...loopback, authorization: `Bearer ${KEY}` }, KEY)).toEqual({
+  it('with a key issued: 401 when missing or wrong, authenticated when it matches', () => {
+    for (const authorization of [null, 'Bearer nope', `Basic ${KEY}`, 'Bearer    '])
+      expect(checkMcpRequest({ ...loopback, authorization }, keys(KEY))).toMatchObject({
+        ok: false,
+        status: 401,
+      })
+    expect(checkMcpRequest({ ...loopback, authorization: `Bearer ${KEY}` }, keys(KEY))).toEqual({
       ok: true,
       authenticated: true,
     })
+    expect(
+      checkMcpRequest({ ...loopback, authorization: `bearer  ${KEY} ` }, keys('other', KEY)),
+    ).toEqual({ ok: true, authenticated: true })
   })
 
   it('checks Host/Origin before the key', () => {
     expect(
-      checkMcpRequest({ host: 'evil.example', origin: null, authorization: `Bearer ${KEY}` }, KEY),
+      checkMcpRequest(
+        { host: 'evil.example', origin: null, authorization: `Bearer ${KEY}` },
+        keys(KEY),
+      ),
     ).toMatchObject({ ok: false, status: 403 })
   })
 })

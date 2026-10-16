@@ -19,7 +19,7 @@ export interface McpToolDeps {
 }
 
 /** Per-request facts the HTTP layer established. `authenticated` is true only
- * when an API key is configured and this request presented it. */
+ * when an API key has been issued and this request presented a valid one. */
 export interface McpRequestContext {
   authenticated: boolean
 }
@@ -31,7 +31,7 @@ const UNTRUSTED_NOTE =
 const REVEAL_NOTE =
   'Configured secrets (header, cookie and browser-storage values) are replaced with ' +
   '[SECRET:<label>] placeholders. Pass reveal: true to get the real values; this works only ' +
-  'when the MCP API key (SAKUDA_MCP_API_KEY) is configured and sent.'
+  'when an MCP API key has been issued in the sakuda UI (MCP page) and is sent.'
 
 const DEFAULT_FINDINGS_LIMIT = 100
 const MAX_FINDINGS_LIMIT = 500
@@ -63,7 +63,10 @@ interface RevealOutcome {
 function resolveReveal(requested: boolean | undefined, ctx: McpRequestContext): RevealOutcome {
   if (!requested) return { reveal: false }
   if (ctx.authenticated) return { reveal: true }
-  return { reveal: false, revealDenied: 'API key required (set SAKUDA_MCP_API_KEY and send it)' }
+  return {
+    reveal: false,
+    revealDenied: 'API key required (issue one on the sakuda MCP page and send it)',
+  }
 }
 
 /** Redact first, then wrap: truncating before redaction could cut a secret in

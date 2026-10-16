@@ -3,6 +3,7 @@ import { getEnv } from '../config/env'
 import { getDb } from '../db/client'
 import { createSiteCipher, type SiteCipher } from '../domain/headerCipher'
 import type { CaptureDeps } from '../services/captureService'
+import type { McpKeyServiceDeps } from '../services/mcpKeyService'
 import type { SiteServiceDeps } from '../services/siteService'
 import { logger } from './logger'
 
@@ -15,6 +16,10 @@ function getCipher(): SiteCipher {
 
 export function siteDeps(): SiteServiceDeps {
   return { db: getDb(), cipher: getCipher(), now: () => new Date(), id: randomUUID }
+}
+
+export function mcpKeyDeps(): McpKeyServiceDeps {
+  return { db: getDb(), now: () => new Date(), id: randomUUID }
 }
 
 /** Per-call budget for each DevTools request during auth capture (#17). */

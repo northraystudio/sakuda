@@ -8,10 +8,12 @@ import {
 } from 'h3'
 import { getEnv } from '../config/env'
 import { timeBudgetEnv } from '../domain/engineTimeBudget'
+import { getDb } from '../db/client'
 import { siteDeps } from '../lib/deps'
 import { logger } from '../lib/logger'
 import { checkMcpRequest } from '../mcp/auth'
 import { createSakudaMcpServer } from '../mcp/tools'
+import { mcpKeyLookup } from '../services/mcpKeyService'
 
 /**
  * Read-only MCP endpoint (#16), Streamable HTTP in stateless mode: a fresh
@@ -28,7 +30,7 @@ export default defineEventHandler(async (event) => {
       origin: getRequestHeader(event, 'origin') ?? null,
       authorization: getRequestHeader(event, 'authorization') ?? null,
     },
-    env.mcpApiKey,
+    mcpKeyLookup(getDb()),
   )
   if (!auth.ok) {
     logger.warn({ operation: 'mcp.request', status: auth.status }, auth.message)
