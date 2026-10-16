@@ -97,6 +97,14 @@ const EnvSchema = z.object({
   SAKUDA_ZAP_LOCALHOST_ALIAS: optionalString,
   SAKUDA_ENGINE_GRACE_MINUTES: z.coerce.number().int().nonnegative().default(10),
   SAKUDA_JOB_RUNNER: z.enum(['on', 'off']).default('on'),
+  // Optional: unset keeps /mcp an unauthenticated loopback endpoint like the
+  // rest of the API. A short key is a config mistake — fail fast (#16).
+  // Trimmed because the Bearer token is trimmed before comparison: a stray
+  // space in .env would otherwise lock every client out.
+  SAKUDA_MCP_API_KEY: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().min(16, 'SAKUDA_MCP_API_KEY must be at least 16 characters').optional(),
+  ),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 })
 
@@ -140,6 +148,8 @@ export interface Env {
   }
   engineGraceMinutes: number
   jobRunner: boolean
+  /** Bearer key for /mcp; also the only way MCP may reveal secret values. */
+  mcpApiKey: string | undefined
   logLevel: 'debug' | 'info' | 'warn' | 'error'
 }
 
@@ -187,6 +197,7 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
     },
     engineGraceMinutes: v.SAKUDA_ENGINE_GRACE_MINUTES,
     jobRunner: v.SAKUDA_JOB_RUNNER === 'on',
+    mcpApiKey: v.SAKUDA_MCP_API_KEY,
     logLevel: v.LOG_LEVEL,
   }
 }

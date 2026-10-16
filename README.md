@@ -134,32 +134,33 @@ Override per invocation with `make up SAKUDA_PORT=3005`.
 
 ## Environment variables
 
-| Variable                          | Default                                                   | Notes                                                                                                                            |
-| --------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `SAKUDA_ENCRYPTION_KEY`           | _(required)_                                              | base64 of 32 random bytes. Generate with `pnpm keygen` or `openssl rand -base64 32`.                                             |
-| `SAKUDA_DATA_DIR`                 | `./data` (`/data` in the image)                           | SQLite DB + per-scan work dirs live here.                                                                                        |
-| `SAKUDA_MIGRATIONS_DIR`           | `./server/db/migrations` (`/app/migrations` in the image) | Drizzle migrations applied on boot.                                                                                              |
-| `SAKUDA_NUCLEI_BIN`               | `nuclei` (`/usr/local/bin/nuclei` in the image)           | Path to the nuclei binary.                                                                                                       |
-| `SAKUDA_NUCLEI_TEMPLATES`         | `/opt/nuclei-templates/http`                              | Pinned nuclei-templates checkout.                                                                                                |
-| `SAKUDA_NUCLEI_DAST_TEMPLATES`    | `/opt/nuclei-templates/dast`                              | DAST (fuzzing) templates, loaded only for sites with "Active injection checks" on.                                               |
-| `SAKUDA_NUCLEI_MAX_MINUTES`       | `60`                                                      | Hard timeout for a nuclei run, shared across its phases (DAST / signature / OpenAPI).                                            |
-| `SAKUDA_NUCLEI_CONCURRENCY`       | `25`                                                      | nuclei parallelism (`-c`). Lower it for a slow or fragile target so a run wastes less time waiting on slow responses.            |
-| `SAKUDA_KATANA_BIN`               | `katana` (`/usr/local/bin/katana` in the image)           | Path to the katana binary (discovery's second URL source). Its time budget is the site's spider minutes; no separate knob.       |
-| `SAKUDA_DALFOX_BIN`               | `dalfox` (`/usr/local/bin/dalfox` in the image)           | Path to the dalfox binary (the reflected/DOM XSS engine). Runs only under active injection checks.                               |
-| `SAKUDA_DALFOX_MAX_MINUTES`       | `10`                                                      | Wall-clock budget for one dalfox run.                                                                                            |
-| `SAKUDA_DALFOX_CONCURRENCY`       | `10`                                                      | dalfox parallelism (workers / concurrent targets). Kept small — it scans a curated target list, not a recon dump.                |
-| `SAKUDA_DALFOX_MAX_TARGETS`       | `50`                                                      | Cap on how many saved GET targets one dalfox run consumes.                                                                       |
-| `SAKUDA_HTTPX_BIN`                | `httpx` (`/usr/local/bin/httpx` in the image)             | Path to the httpx binary — nuclei's pre-scan liveness probe. Missing → every target passes through, with a warning.              |
-| `SAKUDA_HTTPX_MAX_MINUTES`        | `5`                                                       | Cap for the whole probe, counted inside the nuclei run's time budget.                                                            |
-| `SAKUDA_HTTPX_PRUNE_STATUS_CODES` | _(empty = off)_                                           | Opt-in: 4xx codes (never 405/429) whose targets are dropped from the nuclei list, e.g. `404,410`. Off by default — see below.    |
-| `SAKUDA_ZAP_CMD`                  | `zap.sh` (`/zap/zap.sh` in the image)                     | ZAP entrypoint. Dev on macOS: `./scripts/zap-docker.sh`.                                                                         |
-| `SAKUDA_ZAP_WORKDIR`              | _(unset)_                                                 | Container-side path when ZAP sees the scan work dir at a different path than the host (the dev wrapper mounts it at `/zap/wrk`). |
-| `SAKUDA_ZAP_MAX_HEAP`             | `1024m`                                                   | `-Xmx` passed to ZAP via `JAVA_TOOL_OPTIONS`.                                                                                    |
-| `SAKUDA_LOCALHOST_ALIAS`          | _(unset)_                                                 | Rewrites `localhost`/`127.0.0.1` in target URLs for all engines.                                                                 |
-| `SAKUDA_ZAP_LOCALHOST_ALIAS`      | `host.docker.internal`                                    | Same, for ZAP only (falls back to `SAKUDA_LOCALHOST_ALIAS`). ZAP's Firefox treats this host as a secure context.                 |
-| `SAKUDA_ENGINE_GRACE_MINUTES`     | `10`                                                      | Grace period before an orphaned engine process is treated as failed.                                                             |
-| `SAKUDA_JOB_RUNNER`               | `on`                                                      | Set `off` to disable the in-process scan queue (e.g. in tests).                                                                  |
-| `LOG_LEVEL`                       | `info`                                                    | `debug` \| `info` \| `warn` \| `error`.                                                                                          |
+| Variable                          | Default                                                   | Notes                                                                                                                                                       |
+| --------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SAKUDA_ENCRYPTION_KEY`           | _(required)_                                              | base64 of 32 random bytes. Generate with `pnpm keygen` or `openssl rand -base64 32`.                                                                        |
+| `SAKUDA_DATA_DIR`                 | `./data` (`/data` in the image)                           | SQLite DB + per-scan work dirs live here.                                                                                                                   |
+| `SAKUDA_MIGRATIONS_DIR`           | `./server/db/migrations` (`/app/migrations` in the image) | Drizzle migrations applied on boot.                                                                                                                         |
+| `SAKUDA_NUCLEI_BIN`               | `nuclei` (`/usr/local/bin/nuclei` in the image)           | Path to the nuclei binary.                                                                                                                                  |
+| `SAKUDA_NUCLEI_TEMPLATES`         | `/opt/nuclei-templates/http`                              | Pinned nuclei-templates checkout.                                                                                                                           |
+| `SAKUDA_NUCLEI_DAST_TEMPLATES`    | `/opt/nuclei-templates/dast`                              | DAST (fuzzing) templates, loaded only for sites with "Active injection checks" on.                                                                          |
+| `SAKUDA_NUCLEI_MAX_MINUTES`       | `60`                                                      | Hard timeout for a nuclei run, shared across its phases (DAST / signature / OpenAPI).                                                                       |
+| `SAKUDA_NUCLEI_CONCURRENCY`       | `25`                                                      | nuclei parallelism (`-c`). Lower it for a slow or fragile target so a run wastes less time waiting on slow responses.                                       |
+| `SAKUDA_KATANA_BIN`               | `katana` (`/usr/local/bin/katana` in the image)           | Path to the katana binary (discovery's second URL source). Its time budget is the site's spider minutes; no separate knob.                                  |
+| `SAKUDA_DALFOX_BIN`               | `dalfox` (`/usr/local/bin/dalfox` in the image)           | Path to the dalfox binary (the reflected/DOM XSS engine). Runs only under active injection checks.                                                          |
+| `SAKUDA_DALFOX_MAX_MINUTES`       | `10`                                                      | Wall-clock budget for one dalfox run.                                                                                                                       |
+| `SAKUDA_DALFOX_CONCURRENCY`       | `10`                                                      | dalfox parallelism (workers / concurrent targets). Kept small — it scans a curated target list, not a recon dump.                                           |
+| `SAKUDA_DALFOX_MAX_TARGETS`       | `50`                                                      | Cap on how many saved GET targets one dalfox run consumes.                                                                                                  |
+| `SAKUDA_HTTPX_BIN`                | `httpx` (`/usr/local/bin/httpx` in the image)             | Path to the httpx binary — nuclei's pre-scan liveness probe. Missing → every target passes through, with a warning.                                         |
+| `SAKUDA_HTTPX_MAX_MINUTES`        | `5`                                                       | Cap for the whole probe, counted inside the nuclei run's time budget.                                                                                       |
+| `SAKUDA_HTTPX_PRUNE_STATUS_CODES` | _(empty = off)_                                           | Opt-in: 4xx codes (never 405/429) whose targets are dropped from the nuclei list, e.g. `404,410`. Off by default — see below.                               |
+| `SAKUDA_ZAP_CMD`                  | `zap.sh` (`/zap/zap.sh` in the image)                     | ZAP entrypoint. Dev on macOS: `./scripts/zap-docker.sh`.                                                                                                    |
+| `SAKUDA_ZAP_WORKDIR`              | _(unset)_                                                 | Container-side path when ZAP sees the scan work dir at a different path than the host (the dev wrapper mounts it at `/zap/wrk`).                            |
+| `SAKUDA_ZAP_MAX_HEAP`             | `1024m`                                                   | `-Xmx` passed to ZAP via `JAVA_TOOL_OPTIONS`.                                                                                                               |
+| `SAKUDA_LOCALHOST_ALIAS`          | _(unset)_                                                 | Rewrites `localhost`/`127.0.0.1` in target URLs for all engines.                                                                                            |
+| `SAKUDA_ZAP_LOCALHOST_ALIAS`      | `host.docker.internal`                                    | Same, for ZAP only (falls back to `SAKUDA_LOCALHOST_ALIAS`). ZAP's Firefox treats this host as a secure context.                                            |
+| `SAKUDA_ENGINE_GRACE_MINUTES`     | `10`                                                      | Grace period before an orphaned engine process is treated as failed.                                                                                        |
+| `SAKUDA_JOB_RUNNER`               | `on`                                                      | Set `off` to disable the in-process scan queue (e.g. in tests).                                                                                             |
+| `SAKUDA_MCP_API_KEY`              | _(unset)_                                                 | Optional bearer key (16+ chars) for `/mcp`. Unset: loopback-only, no auth, secrets always hidden. Set: required on every MCP request, and enables `reveal`. |
+| `LOG_LEVEL`                       | `info`                                                    | `debug` \| `info` \| `warn` \| `error`.                                                                                                                     |
 
 Full defaults and validation: `server/config/env.ts`. See `.env.example` for
 a copyable local `.env`.
@@ -379,6 +380,33 @@ A site runs one job at a time: a discovery is refused while a scan is
 queued/running and vice versa. Discovery artifacts (ZAP plan, logs, the
 site-tree dump; katana's seeds, logs and JSONL under `katana/`) live under
 `<data dir>/discoveries/<id>` and are removed with the site.
+
+## MCP (agent access)
+
+sakuda serves a read-only [MCP](https://modelcontextprotocol.io) endpoint at
+`/mcp` (Streamable HTTP), so an agent such as Claude Code can read sites,
+scans, findings and diffs directly:
+
+```bash
+claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp
+# with SAKUDA_MCP_API_KEY set:
+claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp \
+  --header "Authorization: Bearer $SAKUDA_MCP_API_KEY"
+```
+
+Tools: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`.
+
+- **Secrets are hidden by default.** Header, cookie and browser-storage values
+  configured on the site are replaced with labeled placeholders such as
+  `[SECRET:header:Authorization]`. `get_scan` / `list_findings` accept
+  `reveal: true` to return the real values — only when `SAKUDA_MCP_API_KEY` is
+  set and sent. Exact and URL-encoded forms are matched; values shorter than 6
+  characters are left as is. Only the site's _current_ values are known, so a token you
+  have since replaced is not recognized if an old scan's evidence echoes it.
+- **Evidence is untrusted.** It is what the scanned server sent back, returned
+  as `{untrusted: true, source: "target-response", text, truncated}` and cut
+  to 2000 characters. Agents must treat it as data, not instructions.
+- Only loopback `Host`/`Origin` values are accepted (DNS-rebinding guard).
 
 ## Not in this MVP
 

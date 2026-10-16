@@ -25,6 +25,7 @@
   "dependencies": {
     "@fontsource/bebas-neue": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
+    "@modelcontextprotocol/server": "2.3.1",
     "better-sqlite3": "^13.0.3",
     "chart.js": "^4.5.1",
     "drizzle-orm": "^0.45.4",
@@ -36,6 +37,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
     "@nuxt/eslint": "^1.17.0",
     "@nuxt/test-utils": "~4.2.0",
     "@tailwindcss/vite": "^4.3.3",
