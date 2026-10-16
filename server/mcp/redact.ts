@@ -41,7 +41,12 @@ export function collectSecrets(headers: Header[], storage: BrowserStorageItem[])
   for (const item of storage) {
     secrets.push({ label: `storage:${item.kind}:${item.name}`, value: item.value })
   }
-  return secrets
+  // A token with `+`, `/`, `=` or spaces often comes back URL-encoded (in a
+  // redirect target, a query echo), which an exact match alone would miss.
+  const encoded = secrets
+    .map((s) => ({ label: s.label, value: encodeURIComponent(s.value) }))
+    .filter((e, i) => e.value !== secrets[i]?.value)
+  return [...secrets, ...encoded]
     .filter((s) => s.value.length >= MIN_SECRET_LENGTH)
     .sort((a, b) => b.value.length - a.value.length)
 }

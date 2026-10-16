@@ -396,7 +396,8 @@ claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp \
 - **秘密値は既定で伏せ字。** サイトに設定したヘッダ・Cookie・ブラウザストレージの値は
   `[SECRET:header:Authorization]` のような名前付きの伏せ字に置き換わります。
   `get_scan` / `list_findings` に `reveal: true` を渡すと実値を返しますが、
-  `SAKUDA_MCP_API_KEY` を設定して送っている場合に限ります。伏せ字の対象はサイトの
+  `SAKUDA_MCP_API_KEY` を設定して送っている場合に限ります。そのままの形と URL エンコードされた形を
+  照合します（6 文字未満の値は対象外）。伏せ字の対象はサイトの
   _現在の_ 設定値だけなので、差し替え済みの古いトークンが過去スキャンの evidence に
   残っていても伏せ字になりません。
 - **evidence は信頼できないデータ。** スキャン対象のサーバーが返した内容で、

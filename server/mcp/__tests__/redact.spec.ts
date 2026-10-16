@@ -16,7 +16,8 @@ describe('collectSecrets', () => {
       ],
       [{ kind: 'localStorage', name: 'token', value: 'local-token-value' }],
     )
-    expect(secrets.map((s) => s.label)).toEqual([
+    const plain = secrets.filter((s) => !s.value.includes('%'))
+    expect(plain.map((s) => s.label)).toEqual([
       'header:Cookie',
       'header:Authorization',
       'storage:localStorage:token',
@@ -25,6 +26,15 @@ describe('collectSecrets', () => {
     ])
     expect(secrets.map((s) => s.value)).toContain('tok-123456')
     expect(secrets.map((s) => s.value)).toContain('session-abcdef')
+    expect(secrets.map((s) => s.value)).toContain('Bearer%20tok-123456')
+    const lengths = secrets.map((s) => s.value.length)
+    expect(lengths).toEqual([...lengths].sort((a, b) => b - a))
+  })
+
+  it('also hides the URL-encoded form of a value', () => {
+    const secrets = collectSecrets([{ name: 'X-Api-Key', value: 'a+b/c=d e' }], [])
+    expect(redactText('next=%2Fcb%3Fk%3Da%2Bb%2Fc%3Dd%20e', secrets)).not.toContain('a%2Bb')
+    expect(redactText('k=a%2Bb%2Fc%3Dd%20e', secrets)).toBe('k=[SECRET:header:X-Api-Key]')
   })
 
   it('skips values too short to redact without shredding ordinary text', () => {

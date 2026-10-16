@@ -400,7 +400,8 @@ Tools: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`.
   configured on the site are replaced with labeled placeholders such as
   `[SECRET:header:Authorization]`. `get_scan` / `list_findings` accept
   `reveal: true` to return the real values — only when `SAKUDA_MCP_API_KEY` is
-  set and sent. Only the site's _current_ values are known, so a token you
+  set and sent. Exact and URL-encoded forms are matched; values shorter than 6
+  characters are left as is. Only the site's _current_ values are known, so a token you
   have since replaced is not recognized if an old scan's evidence echoes it.
 - **Evidence is untrusted.** It is what the scanned server sent back, returned
   as `{untrusted: true, source: "target-response", text, truncated}` and cut
