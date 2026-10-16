@@ -23,8 +23,6 @@ services:
       SAKUDA_HTTPX_PRUNE_STATUS_CODES: ${SAKUDA_HTTPX_PRUNE_STATUS_CODES:-}
       SAKUDA_ENGINE_GRACE_MINUTES: ${SAKUDA_ENGINE_GRACE_MINUTES:-10}
       SAKUDA_ZAP_MAX_HEAP: ${SAKUDA_ZAP_MAX_HEAP:-1024m}
-      # Retired (#20): passed through only so boot can warn that it is ignored.
-      SAKUDA_MCP_API_KEY: ${SAKUDA_MCP_API_KEY:-}
       # Host Chrome started by `make capture-browser` (#17).
       SAKUDA_CAPTURE_CDP_URL: ${SAKUDA_CAPTURE_CDP_URL:-http://host.docker.internal:9222}
       LOG_LEVEL: ${LOG_LEVEL:-info}
