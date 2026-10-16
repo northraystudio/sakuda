@@ -317,6 +317,28 @@ describe('sakuda MCP write tools (#18)', () => {
         await call(c, 'set_openapi', { siteId: 'nope', openapiUrl: 'http://localhost/a' }),
       ).toMatchObject({ isError: true, text: 'site nope not found' })
     })
+
+    it('keeps a non-local URL on the origins the user confirmed', async () => {
+      const site = plainSite({
+        frontBaseUrl: 'https://shop.example.com',
+        apiBaseUrl: 'https://api.example.com/v1',
+        nonLocalConfirmed: true,
+      })
+      const c = await connect()
+      const set = (openapiUrl: string) => call(c, 'set_openapi', { siteId: site.id, openapiUrl })
+
+      expect((await set('https://api.example.com/openapi.json')).json.openapiUrl).toBe(
+        'https://api.example.com/openapi.json',
+      )
+      expect((await set('https://shop.example.com/spec.json')).isError).toBe(false)
+      expect((await set('http://localhost:3001/openapi.json')).isError).toBe(false)
+      const elsewhere = await set('https://other.example.net/openapi.json')
+      expect(elsewhere.isError).toBe(true)
+      expect(elsewhere.text).toMatch(/^OPENAPI_HOST_NOT_CONFIRMED: /)
+      expect((await call(c, 'get_site', { siteId: site.id })).json.openapiUrl).toBe(
+        'http://localhost:3001/openapi.json',
+      )
+    })
   })
 
   describe('start_scan', () => {

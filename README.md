@@ -494,7 +494,8 @@ Write tools go through the same validation and checks as the UI:
 - `add_targets` — append target lines (`[METHOD] [api:]/path`); saved lines are skipped.
 - `set_openapi` — set `openapiUrl` or `openapiJson` (the other is cleared). A
   non-local URL needs the site to be confirmed for non-local scanning in the UI
-  first; the agent cannot confirm it.
+  first (the agent cannot confirm it) and must be on the site's front or API
+  origin; a URL on any other host is set in the UI.
 - `start_scan` — queue a scan; a refusal (unconfirmed non-local target, missing
   OpenAPI for `zap-api`, a scan or discovery already running) comes back with
   its code and reason. Active checks run only if the site enables them.

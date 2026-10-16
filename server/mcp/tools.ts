@@ -22,6 +22,7 @@ import { AddTargetsBodySchema } from '#shared/schemas/targets'
 import { TriageInputSchema } from '#shared/schemas/triage'
 import type { FindingView, Severity, SitePublic } from '#shared/types/api'
 import { ENGINES } from '#shared/utils/engines'
+import { isLocalUrl } from '#shared/utils/localHost'
 import { findExpiryProblems, formatExpiryWarning } from '#shared/utils/secretExpiry'
 
 export interface McpToolDeps {
@@ -78,6 +79,18 @@ function write(fn: () => unknown): ToolResult {
 function validationError(error: z.ZodError): ToolResult {
   const issues = error.issues.map((i) => `${i.path.join('.') || '(input)'}: ${i.message}`)
   return refused(`VALIDATION: ${issues.join('; ')}`)
+}
+
+/** The user's non-local confirmation covers the hosts they saw in the UI.
+ * An agent may point the OpenAPI source at a non-local URL only on one of
+ * the site's own origins — it cannot make sakuda fetch from a new host. */
+function isConfirmedOpenapiHost(site: SitePublic, openapiUrl: string): boolean {
+  if (isLocalUrl(openapiUrl)) return true
+  if (!URL.canParse(openapiUrl)) return false
+  const origin = new URL(openapiUrl).origin
+  return [site.frontBaseUrl, site.apiBaseUrl].some(
+    (base) => base !== null && URL.canParse(base) && new URL(base).origin === origin,
+  )
 }
 
 /** The site's editable fields as an update that keeps every one of them —
@@ -299,7 +312,7 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
         '(an http(s) URL sakuda fetches) or openapiJson (the document as a JSON string). The ' +
         'other one is cleared. Same validation as the sakuda UI; other settings and secrets ' +
         'are kept. A non-local URL is accepted only if the site is already confirmed for ' +
-        'non-local scanning in the UI.',
+        'non-local scanning in the UI, and only on the site’s own front or API origin.',
       inputSchema: z.object({
         siteId: z.string().min(1),
         openapiUrl: z.string().optional(),
@@ -318,6 +331,11 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
         openapiJson: openapiJson ?? null,
       })
       if (!parsed.success) return validationError(parsed.error)
+      if (parsed.data.openapiUrl !== null && !isConfirmedOpenapiHost(site, parsed.data.openapiUrl))
+        return refused(
+          'OPENAPI_HOST_NOT_CONFIRMED: a non-local openapiUrl must be on the site’s front or ' +
+            'API base URL origin; set a URL on another host in the sakuda UI',
+        )
       return write(() => {
         const updated = updateSite(deps.site, siteId, parsed.data)
         return {
