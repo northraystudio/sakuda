@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
-import { EnvError, parseEnv } from '../env'
+import { EnvError, parseEnv, retiredEnvWarnings } from '../env'
 const key = randomBytes(32).toString('base64')
 describe('parseEnv', () => {
   it('fails fast without SAKUDA_ENCRYPTION_KEY', () => {
@@ -120,21 +120,18 @@ describe('SAKUDA_NUCLEI_DAST_TEMPLATES', () => {
         ).toThrow(EnvError)
     })
   })
-  it('SAKUDA_MCP_API_KEY is optional, empty means unset, and a short key fails fast', () => {
-    expect(parseEnv({ SAKUDA_ENCRYPTION_KEY: key }).mcpApiKey).toBeUndefined()
-    expect(
-      parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: '' }).mcpApiKey,
-    ).toBeUndefined()
-    expect(
-      parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: 'k'.repeat(16) }).mcpApiKey,
-    ).toBe('k'.repeat(16))
-    expect(
-      parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: ` ${'k'.repeat(16)}\n` })
-        .mcpApiKey,
-    ).toBe('k'.repeat(16))
-    expect(() => parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: 'short' })).toThrow(
-      /at least 16/,
+  it('SAKUDA_MCP_API_KEY is retired: ignored by parseEnv, reported by name only (#20)', () => {
+    const legacy = 'k9-legacy-secret'
+    expect(() => parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: legacy })).not.toThrow()
+    expect(parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_MCP_API_KEY: legacy })).not.toHaveProperty(
+      'mcpApiKey',
     )
+    const warnings = retiredEnvWarnings({ SAKUDA_MCP_API_KEY: legacy })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/SAKUDA_MCP_API_KEY .*ignored/)
+    expect(warnings[0]).not.toContain(legacy)
+    expect(retiredEnvWarnings({})).toEqual([])
+    expect(retiredEnvWarnings({ SAKUDA_MCP_API_KEY: '  ' })).toEqual([])
   })
   it('SAKUDA_CAPTURE_CDP_URL defaults to loopback, accepts http(s) only, trims a trailing slash (#17)', () => {
     expect(parseEnv({ SAKUDA_ENCRYPTION_KEY: key }).captureCdpUrl).toBe('http://127.0.0.1:9222')

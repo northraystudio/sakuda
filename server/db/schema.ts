@@ -147,8 +147,17 @@ export const discoveries = sqliteTable(
     index('discoveries_status_idx').on(t.status),
   ],
 )
+/** MCP API keys (#20). Only the sha256 of each key is stored — the
+ * plaintext is shown once at issue time and cannot be recovered. */
+export const mcpApiKeys = sqliteTable('mcp_api_keys', {
+  id: text('id').primaryKey(),
+  label: text('label').notNull(),
+  keyHash: text('key_hash').notNull().unique(),
+  createdAt: text('created_at').notNull(),
+})
 export type SiteRow = typeof sites.$inferSelect
 export type DiscoveryRow = typeof discoveries.$inferSelect
 export type ScanRow = typeof scans.$inferSelect
 export type EngineRunRow = typeof engineRuns.$inferSelect
 export type FindingRow = typeof findings.$inferSelect
+export type McpApiKeyRow = typeof mcpApiKeys.$inferSelect

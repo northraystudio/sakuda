@@ -97,14 +97,6 @@ const EnvSchema = z.object({
   SAKUDA_ZAP_LOCALHOST_ALIAS: optionalString,
   SAKUDA_ENGINE_GRACE_MINUTES: z.coerce.number().int().nonnegative().default(10),
   SAKUDA_JOB_RUNNER: z.enum(['on', 'off']).default('on'),
-  // Optional: unset keeps /mcp an unauthenticated loopback endpoint like the
-  // rest of the API. A short key is a config mistake — fail fast (#16).
-  // Trimmed because the Bearer token is trimmed before comparison: a stray
-  // space in .env would otherwise lock every client out.
-  SAKUDA_MCP_API_KEY: z.preprocess(
-    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
-    z.string().min(16, 'SAKUDA_MCP_API_KEY must be at least 16 characters').optional(),
-  ),
   // Chrome DevTools endpoint of the host browser used for auth capture (#17).
   // Only ever read from env, never from a request (no SSRF). Docker sets it to
   // host.docker.internal via docker-compose.yml; dev on the host uses loopback.
@@ -155,8 +147,6 @@ export interface Env {
   }
   engineGraceMinutes: number
   jobRunner: boolean
-  /** Bearer key for /mcp; also the only way MCP may reveal secret values. */
-  mcpApiKey: string | undefined
   /** DevTools HTTP endpoint of the host Chrome used for auth capture (#17). */
   captureCdpUrl: string
   logLevel: 'debug' | 'info' | 'warn' | 'error'
@@ -206,10 +196,22 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
     },
     engineGraceMinutes: v.SAKUDA_ENGINE_GRACE_MINUTES,
     jobRunner: v.SAKUDA_JOB_RUNNER === 'on',
-    mcpApiKey: v.SAKUDA_MCP_API_KEY,
     captureCdpUrl: v.SAKUDA_CAPTURE_CDP_URL.replace(/\/+$/, ''),
     logLevel: v.LOG_LEVEL,
   }
+}
+
+/** Env vars that sakuda no longer reads but that an older `.env` may still
+ * set. Returned (names only, never values) so boot can say they are ignored
+ * instead of silently changing behavior. */
+export function retiredEnvWarnings(raw: NodeJS.ProcessEnv): string[] {
+  const warnings: string[] = []
+  if (raw.SAKUDA_MCP_API_KEY?.trim())
+    warnings.push(
+      'SAKUDA_MCP_API_KEY is no longer used and is ignored (#20). ' +
+        'Issue MCP API keys on the MCP page of the sakuda UI instead, then remove it from .env.',
+    )
+  return warnings
 }
 
 let cached: Env | undefined

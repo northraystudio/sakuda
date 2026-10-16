@@ -317,3 +317,14 @@ export interface ApiErrorData {
   code?: string
   issues?: string[]
 }
+/** An MCP API key as listed (#20) — never the key itself. */
+export interface McpKeyView {
+  id: string
+  label: string
+  createdAt: string
+}
+/** Response of issuing / reissuing a key: the only time `secret` is sent. */
+export interface IssuedMcpKey {
+  key: McpKeyView
+  secret: string
+}

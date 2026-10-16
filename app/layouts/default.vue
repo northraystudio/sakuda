@@ -46,6 +46,7 @@ function onSwitch(event: Event) {
             <option value="" disabled>Switch site</option>
             <option v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
+          <NuxtLink to="/mcp" class="btn-secondary h-10 px-6 text-button-sm">MCP</NuxtLink>
           <NuxtLink to="/sites/new" class="btn-secondary h-10 px-6 text-button-sm"
             >New site</NuxtLink
           >
