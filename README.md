@@ -412,9 +412,11 @@ claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp
 ```
 
 **API keys.** Open **MCP** in the header of the sakuda UI to issue a key with a
-label per client (e.g. `claude-code`). The key and a ready-to-paste
-`claude mcp add ... --header "Authorization: Bearer <key>"` command are shown
-**once**; sakuda stores only a sha256 hash, so a lost key is reissued, not
+label per client (e.g. `claude-code`). The key and ready-to-paste commands —
+`claude mcp remove sakuda -s local`, then
+`claude mcp add ... --header "Authorization: Bearer <key>"` — are shown
+**once** (the remove line replaces an existing `sakuda` entry, which
+`claude mcp add` would refuse; on a first setup it just reports nothing found); sakuda stores only a sha256 hash, so a lost key is reissued, not
 recovered. Reissue and revoke take effect on the next request, without a
 restart: the old key gets 401.
 

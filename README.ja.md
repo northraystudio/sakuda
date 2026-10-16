@@ -408,8 +408,10 @@ claude mcp add --transport http sakuda http://127.0.0.1:3001/mcp
 
 **API キー。** sakuda の UI のヘッダーにある **MCP** を開き、クライアントごとにラベル
 （例: `claude-code`）を付けてキーを発行します。キーと、そのまま貼り付けられる
-`claude mcp add ... --header "Authorization: Bearer <キー>"` コマンドは **一度だけ**
-表示されます。sakuda は sha256 のハッシュしか保存しないので、なくしたキーは
+`claude mcp remove sakuda -s local` と
+`claude mcp add ... --header "Authorization: Bearer <キー>"` の 2 行のコマンドは
+**一度だけ** 表示されます（remove は登録済みの `sakuda` を置き換えるためのもので、
+`claude mcp add` は同じ名前があると失敗します。初回は「見つからない」と出るだけです）。sakuda は sha256 のハッシュしか保存しないので、なくしたキーは
 取り出せません。再発行してください。再発行と失効は再起動なしで次のリクエストから効き、
 古いキーは 401 になります。
 

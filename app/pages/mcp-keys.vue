@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { claudeMcpAddCommand } from '#shared/utils/claudeMcpCommand'
+import { claudeMcpRegisterCommand } from '#shared/utils/claudeMcpCommand'
 import type { IssuedMcpKey, McpKeyView } from '#shared/types/api'
 
 /** MCP API keys (#20): issue, reissue and revoke. A key is shown exactly
@@ -20,7 +20,7 @@ const pending = ref<{ id: string; action: 'reissue' | 'revoke' } | null>(null)
 
 const command = computed(() =>
   issued.value && import.meta.client
-    ? claudeMcpAddCommand(window.location.origin, issued.value.secret)
+    ? claudeMcpRegisterCommand(window.location.origin, issued.value.secret)
     : '',
 )
 
@@ -156,7 +156,7 @@ async function copy(what: 'key' | 'command') {
       <div class="flex items-center gap-2">
         <code
           data-testid="issued-command"
-          class="flex-1 overflow-x-auto bg-soft-cloud p-4 text-caption-md whitespace-nowrap"
+          class="flex-1 overflow-x-auto bg-soft-cloud p-4 text-caption-md whitespace-pre"
           >{{ command }}</code
         >
         <button

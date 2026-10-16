@@ -52,7 +52,7 @@ describe('pages/mcp-keys', () => {
     expect(wrapper.find('[data-testid="issued-key"]').exists()).toBe(false)
   })
 
-  it('shows the key and a pasteable claude mcp add command once, and copies them', async () => {
+  it('shows the key and pasteable claude mcp remove + add commands once, and copies them', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     const wrapper = await mountSuspended(McpPage, { route: '/mcp-keys' })
@@ -64,7 +64,8 @@ describe('pages/mcp-keys', () => {
     expect(wrapper.find('[data-testid="issued-secret"]').text()).toBe(SECRET)
     const command = wrapper.find('[data-testid="issued-command"]').text()
     expect(command).toBe(
-      `claude mcp add --transport http sakuda ${window.location.origin}/mcp ` +
+      'claude mcp remove sakuda -s local\n' +
+        `claude mcp add --transport http sakuda ${window.location.origin}/mcp ` +
         `--header "Authorization: Bearer ${SECRET}"`,
     )
 
