@@ -126,6 +126,15 @@ docker run -d --name sakuda -p 127.0.0.1:3001:3000 --shm-size=1g \
   スキャンを開始できます。ループバックのみにバインドする（デフォルトの
   `SAKUDA_BIND=127.0.0.1`）か、認証付きリバースプロキシの裏に置いてください —
   共有ホストやインターネットに面したホストで `0.0.0.0` に公開してはいけません。
+- **受け付けるのはループバックの名前だけ。** HTTP API（`/api/**`）は、`Host` と
+  （付いていれば）`Origin` が `localhost`・`127.0.0.1`・`[::1]` のどれかでなければ
+  403 を返します。自分のドメインをこのマシンに向け直したページ（DNS rebinding）から
+  操作されないためです。リバースプロキシの裏や LAN 越しに使うときは、sakuda を開く
+  ときのホスト名を `SAKUDA_ALLOWED_HOSTS` に列挙してください（例:
+  `sakuda.lan,192.168.1.5`）。設定している間は起動時に警告が出ます。この確認は
+  無効にできず、`/mcp` はどちらの場合もループバックのみです。この設定が効くのは
+  ビルドしたアプリ（`make up`）です。`pnpm dev` では Vite 自身のホストの確認が
+  先に効くため、ループバック以外の名前は拒否されます。
 - **鍵を保管すること。** `SAKUDA_ENCRYPTION_KEY` は保存されたリクエストヘッダ
   （Cookie / Bearer など）を保管時に暗号化します。失うとそれらのヘッダは永久に
   読めなくなります — パスワードマネージャなど安全な場所に控えてください。データ
@@ -171,6 +180,7 @@ docker run -d --name sakuda -p 127.0.0.1:3001:3000 --shm-size=1g \
 | `SAKUDA_ENGINE_GRACE_MINUTES`     | `10`                                                                      | 孤立したエンジンプロセスを失敗扱いにするまでの猶予時間。                                                                                     |
 | `SAKUDA_JOB_RUNNER`               | `on`                                                                      | `off` でインプロセスのスキャンキューを無効化（テスト時など）。                                                                               |
 | `SAKUDA_CAPTURE_CDP_URL`          | `http://127.0.0.1:9222`（Docker では `http://host.docker.internal:9222`） | **Log in with browser** が使うホストの Chrome の DevTools エンドポイント（`make capture-browser`）。環境変数からのみ読む。                   |
+| `SAKUDA_ALLOWED_HOSTS`            | _(未設定)_                                                                | ループバックのほかに `/api/**` が `Host` / `Origin` で受け付けるホスト名（カンマ区切り、ポートなし）。上の信頼モデルを参照。                 |
 | `LOG_LEVEL`                       | `info`                                                                    | `debug` \| `info` \| `warn` \| `error`。                                                                                                     |
 
 デフォルト値とバリデーションの全容は `server/config/env.ts` を参照。ローカル用
@@ -381,7 +391,8 @@ storage の行になり、加えて Cookie をまとめた `Cookie` ヘッダと
 コピペミスがないか確認できます。分かっている有効期限（JWT の `exp`、キャプチャした
 Cookie の `expires`）は平文で保持して行の横に表示し、期限切れ・60 分以内に切れる
 ログインは **Start scan** の横とスキャン作成の応答で警告します。キャプチャと目の
-アイコンは、ループバックの `Host` / `Origin` にだけ応答します。その Chrome が動いている間は、このマシン上の
+アイコンは、ほかの API と同じく、ループバックの `Host` / `Origin`（または
+`SAKUDA_ALLOWED_HOSTS` に入れたもの）にだけ応答します。その Chrome が動いている間は、このマシン上の
 どのプロセスからも（`host.docker.internal` 経由でコンテナからも）操作できるため、
 sakuda は **Capture** の後にその Chrome を終了させます。途中でやめた場合は自分で
 終了してください。Docker Desktop

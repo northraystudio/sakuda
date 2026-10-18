@@ -1,7 +1,6 @@
 import { createError, getRequestHeader, getRouterParam, readBody, type H3Event } from 'h3'
 import type { z } from 'zod'
 import { ServiceError } from '../services/errors'
-import { isLoopbackRequest } from './loopback'
 
 /**
  * Accepts `application/json` and the `+json` structured-syntax suffix (e.g.
@@ -51,14 +50,4 @@ export function toHttpError(err: unknown): never {
       data: { code: err.code, details: err.details },
     })
   throw err
-}
-
-/** Routes that hand secrets to the caller answer only on a loopback
- * Host/Origin — the rest of the API has no such guard, so without it a
- * DNS-rebinding page could read decrypted values. */
-export function requireLoopbackRequest(event: H3Event): void {
-  const host = getRequestHeader(event, 'host') ?? null
-  const origin = getRequestHeader(event, 'origin') ?? null
-  if (!isLoopbackRequest(host, origin))
-    throw createError({ statusCode: 403, statusMessage: 'loopback Host/Origin only' })
 }

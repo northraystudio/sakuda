@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
-import { EnvError, getEnv, retiredEnvWarnings } from '../config/env'
+import { allowedHostsWarnings, EnvError, getEnv, retiredEnvWarnings } from '../config/env'
 import { closeDb, getDb } from '../db/client'
 import { createSiteCipher } from '../domain/headerCipher'
 import { engineRunners } from '../engines'
@@ -22,6 +22,8 @@ export default defineNitroPlugin((nitroApp) => {
   }
   for (const message of retiredEnvWarnings(process.env))
     logger.warn({ operation: 'boot.env' }, message)
+  for (const message of allowedHostsWarnings(env))
+    logger.warn({ operation: 'boot.env', allowedHosts: env.allowedHosts }, message)
 
   mkdirSync(env.scansDir, { recursive: true })
   mkdirSync(env.discoveriesDir, { recursive: true })
