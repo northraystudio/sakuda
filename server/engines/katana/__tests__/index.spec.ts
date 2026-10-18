@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pino from 'pino'
@@ -8,7 +8,7 @@ import { parseEnv, type Env } from '../../../config/env'
 import type { SiteWithHeaders } from '../../../services/siteService'
 import { SpawnError } from '../../runCommand'
 import { EngineError } from '../../types'
-import { runKatanaCrawl } from '../index'
+import { KATANA_OUTPUT_FILE, KATANA_WORK_SUBDIR, runKatanaCrawl } from '../index'
 
 // Fake katana: records argv, reads the -list seeds file and the -o output
 // path, writes a JSONL crawl of the first seed's origin (real endpoints, one
@@ -44,15 +44,11 @@ console.error('katana: bad flag')
 process.exit(2)
 `
 
-// Writes a partial result, then sleeps well past the test's timeout budget so
-// runCommand has to kill it.
+// Sleeps well past the test's timeout budget so runCommand has to kill it.
+// It writes nothing itself: a test that needs a partial result puts it in the
+// output file before starting it, so the result exists however slowly this
+// process starts (#23).
 const FAKE_HANG = `#!/usr/bin/env node
-const fs = require('node:fs')
-const args = process.argv.slice(2)
-const outFile = args[args.indexOf('-o') + 1]
-const seedsFile = args[args.indexOf('-list') + 1]
-const origin = new URL(fs.readFileSync(seedsFile, 'utf8').trim().split('\\n')[0]).origin
-fs.writeFileSync(outFile, JSON.stringify({ request: { endpoint: origin + '/partial' }, response: { status_code: 200 } }) + '\\n')
 setTimeout(() => {}, 60000)
 `
 
@@ -305,6 +301,17 @@ describe('runKatanaCrawl', () => {
 
   it('keeps the partial result and warns when the engine timeout kills katana', async () => {
     const fakeBin = writeFakeBin(tmp, 'fake-katana-hang.js', FAKE_HANG)
+    // What katana wrote before it was killed. runKatanaCrawl only mkdirs the
+    // work dir, so a line put there first is what it reads back after the kill.
+    const katanaDir = join(tmp, 'work', KATANA_WORK_SUBDIR)
+    mkdirSync(katanaDir, { recursive: true })
+    writeFileSync(
+      join(katanaDir, KATANA_OUTPUT_FILE),
+      JSON.stringify({
+        request: { endpoint: 'http://localhost:3000/partial' },
+        response: { status_code: 200 },
+      }) + '\n',
+    )
     // The real minimum budget is 1 min (+ grace); a fractional value keeps
     // the timeout (minutes * 60_000 ms, grace 0) inside a unit test's patience.
     const out = await runKatanaCrawl({

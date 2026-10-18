@@ -16,7 +16,7 @@ import { katanaScopeRegexes } from '../../domain/crawlScope'
 /** Sub-directory of the discovery work dir: katana's files must not collide
  * with ZAP's (`stdout.log`, `plan.yaml`, …) when both run in the same job. */
 export const KATANA_WORK_SUBDIR = 'katana'
-const OUTPUT_FILE = 'urls.jsonl'
+export const KATANA_OUTPUT_FILE = 'urls.jsonl'
 
 /**
  * Discovery's second URL source: a static katana crawl with JS-bundle
@@ -46,7 +46,7 @@ async function crawl(
     rewriteLoopbackHost(joinUrl(site.frontBaseUrl, p), env.localhostAlias),
   )
   const seedsFile = join(workDir, 'seeds.txt')
-  const outputFile = join(workDir, OUTPUT_FILE)
+  const outputFile = join(workDir, KATANA_OUTPUT_FILE)
   const stdoutPath = join(workDir, 'stdout.log')
   const stderrPath = join(workDir, 'stderr.log')
   const maxMinutes = site.zapFeSpiderMaxMinutes
