@@ -14,6 +14,16 @@ export interface SeverityCounts {
   low: number
   info: number
 }
+/** An agent's verdict on a finding (#18). `false-positive` and `accepted`
+ * stop the finding from counting as new in later scans; `confirmed` keeps it
+ * counting (and is how a verdict is taken back). */
+export const TRIAGE_STATUSES = ['confirmed', 'false-positive', 'accepted'] as const
+export type TriageStatus = (typeof TRIAGE_STATUSES)[number]
+export interface FindingTriageView {
+  status: TriageStatus
+  reason: string
+  updatedAt: string
+}
 export type ScanStatus = 'queued' | 'running' | 'done' | 'failed'
 export type EngineRunStatus = 'running' | 'done' | 'failed' | 'skipped'
 export interface SitePublic {
@@ -156,12 +166,18 @@ export interface FindingView {
   solution: string | null
   reference: string | null
   fingerprint: string
+  /** Not in the previous finished scan, and not triaged as false-positive /
+   * accepted. */
   isNew: boolean
+  triage: FindingTriageView | null
 }
 export interface ScanDiff {
   previousScanId: string
   newCount: number
   persistingCount: number
+  /** Not in the previous scan, but left out of `newCount` because they are
+   * triaged as false-positive / accepted. */
+  suppressedCount: number
   resolved: FindingView[]
 }
 export interface ScanDetail extends ScanSummary {
@@ -201,7 +217,7 @@ export interface HistoryPoint {
   status: ScanStatus
   counts: SeverityCounts
   engines: Partial<Record<Engine, SeverityCounts>>
-  diff: { new: number; persisting: number; resolved: number } | null
+  diff: { new: number; persisting: number; resolved: number; suppressed: number } | null
 }
 /** The value-free shape of one JSON node: its type, plus (for containers)
  * child field names / element shapes. Never a captured value — only names and

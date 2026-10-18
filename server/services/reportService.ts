@@ -16,9 +16,11 @@ import {
   type TimeBudgetEnv,
 } from '../domain/engineTimeBudget'
 import { countsForScan, toScanSummary } from './scanService'
+import { suppressedFingerprints, triageForSite } from './triageService'
 import type {
   Engine,
   EngineRunView,
+  FindingTriageView,
   FindingView,
   HistoryPoint,
   ScanDetail,
@@ -72,7 +74,11 @@ function toEngineRunView(
   }
 }
 
-function toFindingView(row: FindingRow, isNew: boolean): FindingView {
+function toFindingView(
+  row: FindingRow,
+  isNew: boolean,
+  triage: FindingTriageView | null,
+): FindingView {
   return {
     id: row.id,
     engine: row.engine,
@@ -88,6 +94,7 @@ function toFindingView(row: FindingRow, isNew: boolean): FindingView {
     reference: row.reference,
     fingerprint: row.fingerprint,
     isNew,
+    triage,
   }
 }
 
@@ -161,6 +168,11 @@ export function getScanDetail(db: Db, scanId: string, deps: ScanDetailDeps): Sca
   const currentFindingRows = sortFindingRows(findingsForScan(db, scanId))
   const currentFingerprints = currentFindingRows.map((f) => f.fingerprint)
 
+  // Verdicts are per site + fingerprint (#18): one triaged as false-positive /
+  // accepted on any scan stops counting as new on this one.
+  const triage = triageForSite(db, scanRow.siteId)
+  const suppressed = suppressedFingerprints(triage)
+
   const previousScanId = previousDoneScanId(db, scanRow.siteId, {
     createdAt: scanRow.createdAt,
     id: scanRow.id,
@@ -172,20 +184,25 @@ export function getScanDetail(db: Db, scanId: string, deps: ScanDetailDeps): Sca
     const previousFindingRows = findingsForScan(db, previousScanId)
     previousFingerprints = new Set(previousFindingRows.map((f) => f.fingerprint))
     const currentFingerprintSet = new Set(currentFingerprints)
-    const counts = diffFingerprints(previousFingerprints, currentFingerprintSet)
+    const counts = diffFingerprints(previousFingerprints, currentFingerprintSet, suppressed)
     const resolved = dedupeByFingerprint(
       previousFindingRows.filter((f) => !currentFingerprintSet.has(f.fingerprint)),
-    ).map((f) => toFindingView(f, false))
+    ).map((f) => toFindingView(f, false, triage.get(f.fingerprint) ?? null))
     diff = {
       previousScanId,
       newCount: counts.new,
       persistingCount: counts.persisting,
+      suppressedCount: counts.suppressed,
       resolved,
     }
   }
 
   const findingViews = currentFindingRows.map((f) =>
-    toFindingView(f, !previousFingerprints.has(f.fingerprint)),
+    toFindingView(
+      f,
+      !previousFingerprints.has(f.fingerprint) && !suppressed.has(f.fingerprint),
+      triage.get(f.fingerprint) ?? null,
+    ),
   )
 
   return {
@@ -207,6 +224,7 @@ export function getSiteHistory(db: Db, siteId: string): HistoryPoint[] {
     .orderBy(asc(scans.createdAt))
     .all()
 
+  const suppressed = suppressedFingerprints(triageForSite(db, siteId))
   let lastDoneFingerprints: Set<string> | null = null
 
   return scanRows.map((scan) => {
@@ -219,7 +237,8 @@ export function getSiteHistory(db: Db, siteId: string): HistoryPoint[] {
     let diff: HistoryPoint['diff'] = null
     if (scan.status === 'done') {
       const currentFingerprints = new Set(findingsForScan(db, scan.id).map((f) => f.fingerprint))
-      if (lastDoneFingerprints) diff = diffFingerprints(lastDoneFingerprints, currentFingerprints)
+      if (lastDoneFingerprints)
+        diff = diffFingerprints(lastDoneFingerprints, currentFingerprints, suppressed)
       lastDoneFingerprints = currentFingerprints
     }
 

@@ -2,16 +2,28 @@ import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import type { TimeBudgetEnv } from '../domain/engineTimeBudget'
 import { toSiteSnapshot } from '../domain/siteView'
+import { logger } from '../lib/logger'
+import { ServiceError } from '../services/errors'
 import { getScanDetail } from '../services/reportService'
-import { listScans } from '../services/scanService'
+import { createScan, listScans } from '../services/scanService'
 import {
+  addSiteTargets,
   getSite,
   listSites,
   loadSiteWithHeaders,
+  updateSite,
   type SiteServiceDeps,
 } from '../services/siteService'
+import { setTriage } from '../services/triageService'
 import { collectSecrets, redactDeep, wrapUntrusted, type SecretValue } from './redact'
-import type { FindingView, Severity } from '#shared/types/api'
+import { CreateScanBodySchema } from '#shared/schemas/scan'
+import { SiteUpdateSchema, type SiteUpdateInput } from '#shared/schemas/site'
+import { AddTargetsBodySchema } from '#shared/schemas/targets'
+import { TriageInputSchema } from '#shared/schemas/triage'
+import type { FindingView, Severity, SitePublic } from '#shared/types/api'
+import { ENGINES } from '#shared/utils/engines'
+import { isLocalUrl } from '#shared/utils/localHost'
+import { findExpiryProblems, formatExpiryWarning } from '#shared/utils/secretExpiry'
 
 export interface McpToolDeps {
   site: SiteServiceDeps
@@ -46,6 +58,66 @@ function ok(value: unknown): ToolResult {
 
 function notFound(what: 'site' | 'scan', id: string): ToolResult {
   return { content: [{ type: 'text', text: `${what} ${id} not found` }], isError: true }
+}
+
+function refused(text: string): ToolResult {
+  return { content: [{ type: 'text', text }], isError: true }
+}
+
+/** Runs a write through the same service the REST API calls; a rejection
+ * the service raises (validation, a scan gate, not found) goes back to the
+ * agent as its code and reason. Anything else is a bug and propagates. */
+function write(fn: () => unknown): ToolResult {
+  try {
+    return ok(fn())
+  } catch (e) {
+    if (e instanceof ServiceError) return refused(`${e.code}: ${e.message}`)
+    throw e
+  }
+}
+
+function validationError(error: z.ZodError): ToolResult {
+  const issues = error.issues.map((i) => `${i.path.join('.') || '(input)'}: ${i.message}`)
+  return refused(`VALIDATION: ${issues.join('; ')}`)
+}
+
+/** The user's non-local confirmation covers the hosts they saw in the UI.
+ * An agent may point the OpenAPI source at a non-local URL only on one of
+ * the site's own origins — it cannot make sakuda fetch from a new host. */
+function isConfirmedOpenapiHost(site: SitePublic, openapiUrl: string): boolean {
+  if (isLocalUrl(openapiUrl)) return true
+  if (!URL.canParse(openapiUrl)) return false
+  const origin = new URL(openapiUrl).origin
+  return [site.frontBaseUrl, site.apiBaseUrl].some(
+    (base) => base !== null && URL.canParse(base) && new URL(base).origin === origin,
+  )
+}
+
+/** The site's editable fields as an update that keeps every one of them —
+ * the base an MCP write overlays its own fields on, so it passes through the
+ * same `SiteUpdateSchema` the edit form does. Headers and browser storage are
+ * left out, which keeps the stored secrets untouched. */
+function currentSettings(site: SitePublic): SiteUpdateInput {
+  return {
+    name: site.name,
+    frontBaseUrl: site.frontBaseUrl,
+    apiBaseUrl: site.apiBaseUrl,
+    nucleiPaths: site.nucleiPaths,
+    openapiUrl: site.openapiUrl,
+    openapiJson: site.openapiJson,
+    zapFeSeedPath: site.zapFeSeedPath,
+    discoverySeedPaths: site.discoverySeedPaths,
+    crawlScopePaths: site.crawlScopePaths,
+    excludePaths: site.excludePaths,
+    nucleiRateLimit: site.nucleiRateLimit,
+    nucleiMaxMinutes: site.nucleiMaxMinutes,
+    nucleiConcurrency: site.nucleiConcurrency,
+    zapApiMaxMinutes: site.zapApiMaxMinutes,
+    zapFeSpiderMaxMinutes: site.zapFeSpiderMaxMinutes,
+    nonLocalConfirmed: site.nonLocalConfirmed,
+    allowMutatingRequests: site.allowMutatingRequests,
+    nucleiEnabledRiskTags: site.nucleiEnabledRiskTags,
+  }
 }
 
 /** A site's secrets as they are configured now. Decryption failures propagate:
@@ -208,6 +280,121 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
         ...(outcome.revealDenied ? { revealDenied: outcome.revealDenied } : {}),
       })
     },
+  )
+
+  const writes = { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
+
+  server.registerTool(
+    'add_targets',
+    {
+      description:
+        'Add target paths to a site’s saved list, one per entry: "[METHOD] [api:]/path" ' +
+        '(method defaults to GET; "api:" resolves against the API base URL). Same validation ' +
+        'as the sakuda UI. Already-saved lines are skipped, so re-sending is safe.',
+      inputSchema: z.object({
+        siteId: z.string().min(1),
+        lines: AddTargetsBodySchema.shape.lines,
+      }),
+      annotations: { ...writes, idempotentHint: true },
+    },
+    ({ siteId, lines }) =>
+      write(() => {
+        const { site, added, skipped } = addSiteTargets(deps.site, siteId, lines)
+        return { siteId, added, skipped, nucleiPaths: site.nucleiPaths }
+      }),
+  )
+
+  server.registerTool(
+    'set_openapi',
+    {
+      description:
+        'Set a site’s OpenAPI source (used by the zap-api engine): exactly one of openapiUrl ' +
+        '(an http(s) URL sakuda fetches) or openapiJson (the document as a JSON string). The ' +
+        'other one is cleared. Same validation as the sakuda UI; other settings and secrets ' +
+        'are kept. A non-local URL is accepted only if the site is already confirmed for ' +
+        'non-local scanning in the UI, and only on the site’s own front or API origin.',
+      inputSchema: z.object({
+        siteId: z.string().min(1),
+        openapiUrl: z.string().optional(),
+        openapiJson: z.string().optional(),
+      }),
+      annotations: { ...writes, idempotentHint: true },
+    },
+    ({ siteId, openapiUrl, openapiJson }) => {
+      if ((openapiUrl === undefined) === (openapiJson === undefined))
+        return refused('VALIDATION: pass exactly one of openapiUrl or openapiJson')
+      const site = getSite(db, siteId)
+      if (!site) return notFound('site', siteId)
+      const parsed = SiteUpdateSchema.safeParse({
+        ...currentSettings(site),
+        openapiUrl: openapiUrl ?? null,
+        openapiJson: openapiJson ?? null,
+      })
+      if (!parsed.success) return validationError(parsed.error)
+      if (parsed.data.openapiUrl !== null && !isConfirmedOpenapiHost(site, parsed.data.openapiUrl))
+        return refused(
+          'OPENAPI_HOST_NOT_CONFIRMED: a non-local openapiUrl must be on the site’s front or ' +
+            'API base URL origin; set a URL on another host in the sakuda UI',
+        )
+      return write(() => {
+        const updated = updateSite(deps.site, siteId, parsed.data)
+        return {
+          siteId,
+          openapiUrl: updated.openapiUrl,
+          hasOpenapiJson: updated.openapiJson !== null,
+        }
+      })
+    },
+  )
+
+  server.registerTool(
+    'start_scan',
+    {
+      description:
+        'Queue a scan of a site with the given engines. It passes the same checks as starting ' +
+        'from the sakuda UI (non-local confirmation, engine prerequisites such as an OpenAPI ' +
+        'source for zap-api, no other scan or discovery running); a refusal returns its code ' +
+        'and reason. Active (injecting) checks run only if the site enables them in the UI. ' +
+        'Poll get_scan with the returned id for progress.',
+      inputSchema: z.object({
+        siteId: z.string().min(1),
+        engines: z.array(z.enum(ENGINES)).min(1),
+      }),
+      annotations: { ...writes, idempotentHint: false, openWorldHint: true },
+    },
+    ({ siteId, engines }) => {
+      const body = CreateScanBodySchema.safeParse({ engines })
+      if (!body.success) return validationError(body.error)
+      return write(() => {
+        const now = deps.site.now()
+        const scan = createScan(db, { now: () => now, id: deps.site.id }, siteId, body.data.engines)
+        // Same as the REST route: an expired login does not block the scan,
+        // it is reported so the result is not misread (#17).
+        const problems = findExpiryProblems(getSite(db, siteId)?.secretExpiries ?? {}, now)
+        if (problems.length > 0)
+          logger.warn(
+            { operation: 'mcp.start_scan', siteId, scanId: scan.id, secrets: problems },
+            'auth secret expired or expiring soon',
+          )
+        return { ...scan, warnings: problems.map(formatExpiryWarning) }
+      })
+    },
+  )
+
+  server.registerTool(
+    'set_finding_triage',
+    {
+      description:
+        'Record your verdict on a finding: confirmed, false-positive or accepted (a known, ' +
+        'accepted risk), with the reason. The verdict is stored per site and finding ' +
+        'fingerprint, so it applies to later scans that report the same finding: ' +
+        'false-positive and accepted findings stop counting as new there. The sakuda UI shows ' +
+        'the verdict and reason. Setting confirmed takes a dismissal back. Re-sending the ' +
+        'same verdict is safe.',
+      inputSchema: TriageInputSchema,
+      annotations: { ...writes, idempotentHint: true },
+    },
+    (input) => write(() => setTriage({ db, now: deps.site.now }, input)),
   )
 
   return server
