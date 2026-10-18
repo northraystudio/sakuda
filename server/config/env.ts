@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from 'node:path'
 import { z } from 'zod'
+import { hostnameOf } from '../lib/loopback'
 
 export class EnvError extends Error {
   constructor(...args: ConstructorParameters<typeof Error>) {
@@ -57,6 +58,31 @@ const pruneStatusCodes = z.preprocess(
     .default([]),
 )
 
+/** `sakuda.lan, 192.168.1.5` → `['sakuda.lan', '192.168.1.5']`; empty/unset
+ * → `[]` (loopback only). Each entry must be a bare hostname exactly as the
+ * `/api/**` guard compares it — no port, path or wildcard — so a typo fails
+ * at startup instead of silently allowing nothing, or something else (#22). */
+const allowedHosts = z.preprocess(
+  (v) =>
+    typeof v === 'string'
+      ? v
+          .split(',')
+          .map((h) => h.trim())
+          .filter((h) => h !== '')
+      : v,
+  z
+    .array(
+      z
+        .string()
+        .refine(
+          (h) => !h.includes('*') && hostnameOf(h, false) === h.toLowerCase(),
+          'must be a bare hostname (no port, path or wildcard; IPv6 in [brackets], IDN in punycode)',
+        )
+        .transform((h) => h.toLowerCase()),
+    )
+    .default([]),
+)
+
 const EnvSchema = z.object({
   SAKUDA_ENCRYPTION_KEY: z
     .string({
@@ -104,6 +130,7 @@ const EnvSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:9222'),
   ),
+  SAKUDA_ALLOWED_HOSTS: allowedHosts,
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 })
 
@@ -149,6 +176,9 @@ export interface Env {
   jobRunner: boolean
   /** DevTools HTTP endpoint of the host Chrome used for auth capture (#17). */
   captureCdpUrl: string
+  /** Hostnames `/api/**` accepts in `Host`/`Origin` besides loopback (#22).
+   * Never applied to `/mcp`. */
+  allowedHosts: string[]
   logLevel: 'debug' | 'info' | 'warn' | 'error'
 }
 
@@ -197,6 +227,7 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
     engineGraceMinutes: v.SAKUDA_ENGINE_GRACE_MINUTES,
     jobRunner: v.SAKUDA_JOB_RUNNER === 'on',
     captureCdpUrl: v.SAKUDA_CAPTURE_CDP_URL.replace(/\/+$/, ''),
+    allowedHosts: v.SAKUDA_ALLOWED_HOSTS,
     logLevel: v.LOG_LEVEL,
   }
 }
@@ -212,6 +243,17 @@ export function retiredEnvWarnings(raw: NodeJS.ProcessEnv): string[] {
         'Issue MCP API keys on the MCP page of the sakuda UI instead, then remove it from .env.',
     )
   return warnings
+}
+
+/** Boot warning when `/api/**` accepts more than loopback: the listed hosts
+ * get the whole API, including stored secrets, with no login (#22). */
+export function allowedHostsWarnings(env: Pick<Env, 'allowedHosts'>): string[] {
+  if (env.allowedHosts.length === 0) return []
+  return [
+    `SAKUDA_ALLOWED_HOSTS is set: /api/** also accepts Host/Origin ${env.allowedHosts.join(', ')}. ` +
+      'sakuda has no login, so anyone who can reach it under these names can read stored secrets ' +
+      'and start scans. /mcp stays loopback-only.',
+  ]
 }
 
 let cached: Env | undefined

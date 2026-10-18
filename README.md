@@ -130,6 +130,13 @@ Override per invocation with `make up SAKUDA_PORT=3005`.
   start scans against arbitrary hosts. Bind it to loopback only (the default
   `SAKUDA_BIND=127.0.0.1`) or put it behind an authenticating reverse proxy —
   never publish it on `0.0.0.0` on a shared or internet-facing host.
+- **Loopback names only.** The HTTP API (`/api/**`) answers 403 unless `Host`
+  and `Origin` (when sent) are `localhost`, `127.0.0.1` or `[::1]`, so a page
+  that re-points its own domain at your machine (DNS rebinding) cannot drive
+  it. Behind a reverse proxy or over the LAN, list the names you open sakuda
+  by in `SAKUDA_ALLOWED_HOSTS` (e.g. `sakuda.lan,192.168.1.5`); startup logs a
+  warning while it is set. The check cannot be turned off, and `/mcp` stays
+  loopback-only either way.
 - **Keep the key.** `SAKUDA_ENCRYPTION_KEY` encrypts stored request headers
   (Cookie/Bearer/etc.) at rest. If you lose it, those headers become
   permanently unreadable — write it down somewhere safe (e.g. a password
@@ -175,6 +182,7 @@ Override per invocation with `make up SAKUDA_PORT=3005`.
 | `SAKUDA_ENGINE_GRACE_MINUTES`     | `10`                                                                   | Grace period before an orphaned engine process is treated as failed.                                                             |
 | `SAKUDA_JOB_RUNNER`               | `on`                                                                   | Set `off` to disable the in-process scan queue (e.g. in tests).                                                                  |
 | `SAKUDA_CAPTURE_CDP_URL`          | `http://127.0.0.1:9222` (`http://host.docker.internal:9222` in Docker) | DevTools endpoint of the host Chrome used by **Log in with browser** (`make capture-browser`). Read from env only.               |
+| `SAKUDA_ALLOWED_HOSTS`            | _(unset)_                                                              | Comma-separated hostnames (no port) that `/api/**` accepts in `Host`/`Origin` besides loopback. See the trust model above.       |
 | `LOG_LEVEL`                       | `info`                                                                 | `debug` \| `info` \| `warn` \| `error`.                                                                                          |
 
 Full defaults and validation: `server/config/env.ts`. See `.env.example` for
@@ -385,8 +393,9 @@ need, and save; nothing is stored until you do. Use the eye button on any
 row to check a stored value for copy-paste mistakes. Known expiry times (a
 JWT's `exp`, a captured cookie's `expires`) are kept in plaintext, shown next
 to the row, and an expired or soon-expiring (≤ 60 min) login is flagged next
-to **Start scan** and in the scan-create response. Capture and the eye
-button only answer on a loopback `Host`/`Origin`. While that Chrome runs,
+to **Start scan** and in the scan-create response. Like the rest of the API,
+capture and the eye button only answer on a loopback `Host`/`Origin` (or one
+in `SAKUDA_ALLOWED_HOSTS`). While that Chrome runs,
 anything on this machine (including containers, via `host.docker.internal`)
 can drive it, so sakuda quits it after **Capture** — quit it yourself if you
 stop early. Requires Docker Desktop

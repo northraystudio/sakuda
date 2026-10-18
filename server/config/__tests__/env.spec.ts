@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
-import { EnvError, parseEnv, retiredEnvWarnings } from '../env'
+import { allowedHostsWarnings, EnvError, parseEnv, retiredEnvWarnings } from '../env'
 const key = randomBytes(32).toString('base64')
 describe('parseEnv', () => {
   it('fails fast without SAKUDA_ENCRYPTION_KEY', () => {
@@ -147,5 +147,37 @@ describe('SAKUDA_NUCLEI_DAST_TEMPLATES', () => {
     expect(() =>
       parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_CAPTURE_CDP_URL: 'file:///etc/passwd' }),
     ).toThrow(EnvError)
+  })
+  it('SAKUDA_ALLOWED_HOSTS is empty by default and lists bare, lowercased hostnames (#22)', () => {
+    expect(parseEnv({ SAKUDA_ENCRYPTION_KEY: key }).allowedHosts).toEqual([])
+    expect(
+      parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_ALLOWED_HOSTS: ' , ' }).allowedHosts,
+    ).toEqual([])
+    expect(
+      parseEnv({
+        SAKUDA_ENCRYPTION_KEY: key,
+        SAKUDA_ALLOWED_HOSTS: 'Sakuda.LAN, 192.168.1.5,[fd00::1]',
+      }).allowedHosts,
+    ).toEqual(['sakuda.lan', '192.168.1.5', '[fd00::1]'])
+  })
+  it.each([
+    'sakuda.lan:3000',
+    'sakuda.lan/x',
+    '*',
+    '*.lan',
+    'user@sakuda.lan',
+    'fd00::1',
+    'bücher.example',
+  ])('SAKUDA_ALLOWED_HOSTS rejects %s at startup (#22)', (value) => {
+    expect(() => parseEnv({ SAKUDA_ENCRYPTION_KEY: key, SAKUDA_ALLOWED_HOSTS: value })).toThrow(
+      /SAKUDA_ALLOWED_HOSTS/,
+    )
+  })
+  it('allowedHostsWarnings names the extra hosts only when some are set (#22)', () => {
+    expect(allowedHostsWarnings({ allowedHosts: [] })).toEqual([])
+    const warnings = allowedHostsWarnings({ allowedHosts: ['sakuda.lan', '192.168.1.5'] })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('sakuda.lan, 192.168.1.5')
+    expect(warnings[0]).toContain('/mcp stays loopback-only')
   })
 })

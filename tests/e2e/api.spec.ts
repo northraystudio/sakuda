@@ -1,8 +1,12 @@
 import { randomBytes } from 'node:crypto'
+import { readdirSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { request } from 'node:http'
+import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fetch, setup } from '@nuxt/test-utils/e2e'
+import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { fetch, setup, url } from '@nuxt/test-utils/e2e'
 import { afterAll, describe, expect, it } from 'vitest'
 
 // Must be set before `setup()` boots the server subprocess: it inherits
@@ -16,6 +20,9 @@ process.env.SAKUDA_JOB_RUNNER = 'off'
 // Auth capture must never reach a real Chrome a developer may have running on
 // :9222 — point it at a port nothing listens on (#17).
 process.env.SAKUDA_CAPTURE_CDP_URL = 'http://127.0.0.1:9'
+// One extra hostname for the `/api/**` guard, to prove the list works and
+// that `/mcp` ignores it (#22).
+process.env.SAKUDA_ALLOWED_HOSTS = 'sakuda.lan'
 
 await setup({ server: true })
 
@@ -31,6 +38,46 @@ function requireId(v: unknown): string {
   if (!isRecord(v) || typeof v.id !== 'string')
     throw new Error(`expected an object with id, got ${JSON.stringify(v)}`)
   return v.id
+}
+
+/** Sends a request with headers `fetch` refuses to set (`Host`). */
+function rawRequest(
+  path: string,
+  method: string,
+  headers: Record<string, string>,
+): Promise<{ status: number; body: string }> {
+  const { hostname, port } = new URL(url('/'))
+  return new Promise((resolve, reject) => {
+    const req = request({ hostname, port, path, method, headers }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk: string) => (body += chunk))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body }))
+    })
+    req.on('error', reject)
+    req.setTimeout(10_000, () => req.destroy(new Error(`timeout: ${method} ${path}`)))
+    req.end()
+  })
+}
+
+const METHODS = new Set(['get', 'post', 'put', 'delete', 'patch'])
+
+/** Every `/api/**` route, read from the file tree so a new route is covered
+ * without editing this test: `sites/[id]/scans.post.ts` → `POST
+ * /api/sites/x/scans`. */
+function apiRoutes(): { method: string; path: string }[] {
+  const apiDir = fileURLToPath(new URL('../../server/api', import.meta.url))
+  return readdirSync(apiDir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.ts'))
+    .map((e) => {
+      const parts = relative(apiDir, join(e.parentPath, e.name)).split('/')
+      const segments = (parts.pop() ?? '').replace(/\.ts$/, '').split('.')
+      const method = METHODS.has(segments.at(-1) ?? '') ? (segments.pop() ?? 'get') : 'get'
+      const name = segments.join('.')
+      if (name !== 'index') parts.push(name)
+      const path = '/api/' + parts.map((p) => p.replace(/^\[.+\]$/, 'x')).join('/')
+      return { method: method.toUpperCase(), path }
+    })
 }
 
 async function postJson(path: string, body: unknown): Promise<Response> {
@@ -283,8 +330,7 @@ describe('api e2e', () => {
       browserStorage: expect.any(Array),
     })
 
-    // A foreign Host is covered by server/lib/__tests__/loopback.spec.ts — the
-    // test client cannot override Host.
+    // A foreign Host on every route is covered by 'api loopback guard (#22)'.
     const crossOrigin = await fetch(`/api/sites/${siteId}/secrets`, {
       headers: { origin: 'https://evil.example' },
     })
@@ -306,5 +352,81 @@ describe('api e2e', () => {
 
     const badId = await postJson(`/api/sites/${siteId}/capture`, { targetId: '../json/version' })
     expect(badId.status).toBe(422)
+  })
+})
+
+describe('api loopback guard (#22)', () => {
+  const routes = apiRoutes()
+
+  it('finds the API routes from the file tree', () => {
+    expect(routes.length).toBeGreaterThanOrEqual(25)
+    expect(routes).toContainEqual({ method: 'POST', path: '/api/sites/x/scans' })
+    expect(routes).toContainEqual({ method: 'GET', path: '/api/scans/x/report.md' })
+  })
+
+  it('rejects a foreign Host on every route with 403, never echoing it', async () => {
+    for (const { method, path } of routes) {
+      const res = await rawRequest(path, method, { host: 'rebind.evil.example' })
+      expect(res.status, `${method} ${path}`).toBe(403)
+      expect(res.body).not.toContain('rebind.evil.example')
+    }
+  })
+
+  it('rejects a foreign Origin on every route with 403', async () => {
+    const { host } = new URL(url('/'))
+    for (const { method, path } of routes) {
+      const res = await rawRequest(path, method, { host, origin: 'https://evil.example' })
+      expect(res.status, `${method} ${path}`).toBe(403)
+    }
+  })
+
+  it('rejects path spellings that would reach the API router', async () => {
+    for (const path of ['//api/sites', '/API/sites', '/%61pi/sites', '/x/../api/sites']) {
+      const res = await rawRequest(path, 'GET', { host: 'rebind.evil.example' })
+      expect(res.status, path).toBe(403)
+    }
+  })
+
+  it('rejects an HTTP/1.0 request that carries no Host', async () => {
+    const { hostname, port } = new URL(url('/'))
+    const head = await new Promise<string>((resolve, reject) => {
+      const socket = connect(Number(port), hostname, () =>
+        socket.end('GET /api/sites HTTP/1.0\r\n\r\n'),
+      )
+      let data = ''
+      socket.setEncoding('utf8')
+      socket.on('data', (chunk: string) => (data += chunk))
+      socket.on('end', () => resolve(data))
+      socket.on('error', reject)
+    })
+    expect(head).toMatch(/^HTTP\/1\.[01] 403/)
+  })
+
+  it('accepts every loopback spelling and a host listed in SAKUDA_ALLOWED_HOSTS', async () => {
+    const { port } = new URL(url('/'))
+    for (const name of ['localhost', '127.0.0.1', '[::1]', 'sakuda.lan']) {
+      const res = await rawRequest('/api/sites', 'GET', {
+        host: `${name}:${port}`,
+        origin: `http://${name}:${port}`,
+      })
+      expect(res.status, name).toBe(200)
+    }
+  })
+
+  it('keeps /mcp loopback-only even for a host in SAKUDA_ALLOWED_HOSTS', async () => {
+    const res = await rawRequest('/mcp', 'POST', { host: 'sakuda.lan' })
+    expect(res.status).toBe(403)
+  })
+
+  it('still renders pages on the server, whose data comes from /api/** (useFetch)', async () => {
+    const created = await postJson('/api/sites', {
+      name: 'Rendered on the server',
+      frontBaseUrl: 'http://localhost:39996',
+      nucleiPaths: '/',
+    })
+    expect(created.status).toBe(201)
+    const page = await fetch('/')
+    expect(page.status).toBe(200)
+    expect(await page.text()).toContain('Rendered on the server')
   })
 })
