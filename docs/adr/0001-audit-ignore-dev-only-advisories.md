@@ -11,7 +11,7 @@ semver の範囲内で依存を更新すると（nuxt 4.5.2 → 4.6.1 ほか）3
 
 | advisory                                                      | パッケージ                      | 依存の経路                             | 状況                                         |
 | ------------------------------------------------------------- | ------------------------------- | -------------------------------------- | -------------------------------------------- |
-| GHSA-x6jw-m9v5-85vh, GHSA-g4wm-2vf7-vfgr, GHSA-858h-whjf-mvg5 | `simple-git` 3.36.0             | nuxt > @nuxt/devtools 3.4.2            | 修正は v4。devtools の対応は 4.0.0-beta のみ |
+| GHSA-x6jw-m9v5-85vh, GHSA-g4wm-2vf7-vfgr, GHSA-858h-whjf-mvg5 | `simple-git` 3.36.0             | nuxt > @nuxt/devtools 3.4.2            | 解消済み（devtools 3.4.3 で依存が削除、#13） |
 | GHSA-v5rq-49vh-5v5c                                           | `@simple-git/argv-parser` 1.1.1 | 同上                                   | 同上                                         |
 | GHSA-86w9-cpqp-85rv                                           | `node-forge` 1.4.0              | nuxt > nitropack > listhen             | 直った版なし                                 |
 | GHSA-vfj7-8cjw-p6xm                                           | `braces` 3.0.3                  | nuxt > nitropack > globby > micromatch | 直った版なし                                 |
@@ -28,6 +28,7 @@ semver の範囲内で依存を更新すると（nuxt 4.5.2 → 4.6.1 ほか）3
 ## Consequences
 
 - CI の Node Dependency Audit は green に戻る。新しい high 以上の advisory は、今まで通り CI を落とす。
-- 例外にした6件は、開発者の手元（`pnpm dev`、devtools）にはリスクとして残る。本番イメージには届かない。
+- 例外にした件数分は、開発者の手元（`pnpm dev`、devtools）にはリスクとして残る。本番イメージには届かない。
 - 例外は放っておくと残り続けるので、#13 で追跡する。上流に直った版が出たら依存を更新して例外を外し、全部外せたらこの ADR を Superseded にする。
+- 2026-10-19: `@nuxt/devtools` 3.4.3 で `simple-git` への依存がなくなったので、simple-git 系の4件を外した。残る例外は `node-forge`（GHSA-86w9-cpqp-85rv）と `braces`（GHSA-vfj7-8cjw-p6xm）の2件。
 - `nuxt` の更新で、これらのパッケージが実行時の依存（`.output` に入るもの）に変わった場合、この判断の前提が崩れる。その時点で例外を見直す。
