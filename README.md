@@ -136,7 +136,9 @@ Override per invocation with `make up SAKUDA_PORT=3005`.
   it. Behind a reverse proxy or over the LAN, list the names you open sakuda
   by in `SAKUDA_ALLOWED_HOSTS` (e.g. `sakuda.lan,192.168.1.5`); startup logs a
   warning while it is set. The check cannot be turned off, and `/mcp` stays
-  loopback-only either way.
+  loopback-only either way. The list applies to the built app (`make up`);
+  under `pnpm dev`, Vite's own host check still refuses names other than
+  loopback.
 - **Keep the key.** `SAKUDA_ENCRYPTION_KEY` encrypts stored request headers
   (Cookie/Bearer/etc.) at rest. If you lose it, those headers become
   permanently unreadable — write it down somewhere safe (e.g. a password
