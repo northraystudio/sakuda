@@ -2,16 +2,18 @@ import { randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as realSleep } from 'node:timers/promises'
 import pino from 'pino'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EngineError } from '../../../types'
 import { probeTargets, type HttpxProbeInput } from '../index'
 
 // Fake httpx that never finishes on its own — only the cap stops it. Writes
 // one line first (synchronously: a piped console.log is still buffered when
 // SIGTERM lands) so the timed-out path still has something to annotate.
+const FAKE_HANGS_LINE = JSON.stringify({ input: 'http://h/a', status_code: 200, failed: false })
 const FAKE_HANGS = `#!/usr/bin/env node
-require('node:fs').writeSync(1, JSON.stringify({ input: 'http://h/a', status_code: 200, failed: false }) + '\\n')
+require('node:fs').writeSync(1, ${JSON.stringify(FAKE_HANGS_LINE)} + '\\n')
 setInterval(() => {}, 1000)
 `
 
@@ -74,7 +76,27 @@ describe('probeTargets', () => {
   })
 
   it('passes everything through as `timedOut` when the cap stops it, keeping what it saw', async () => {
-    const r = await probeTargets(input({ bin: writeFakeBin(tmp, FAKE_HANGS), timeoutMs: 2_000 }))
+    // The cap is runCommand's setTimeout, armed at spawn. On a busy machine
+    // the fake's Node startup can outlast it, so the cap would fire before
+    // the line is written (#31). Fake only the timers, wait in real time for
+    // the line to reach stdout.jsonl, then fire the cap ourselves.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let r
+    try {
+      const pending = probeTargets(input({ bin: writeFakeBin(tmp, FAKE_HANGS), timeoutMs: 2_000 }))
+      const stdoutPath = join(tmp, 'work', 'httpx', 'stdout.jsonl')
+      const lineWritten = (): boolean =>
+        existsSync(stdoutPath) && readFileSync(stdoutPath, 'utf8').includes(FAKE_HANGS_LINE)
+      const waitDeadline = Date.now() + 10_000
+      while (!lineWritten() && Date.now() < waitDeadline) await realSleep(20)
+      // Fire the cap even when the wait gave up, so the fake is still killed
+      // rather than left running after the test fails.
+      vi.advanceTimersByTime(2_000)
+      r = await pending
+      if (!lineWritten()) throw new Error(`fake httpx never wrote its line to ${stdoutPath}`)
+    } finally {
+      vi.useRealTimers()
+    }
     expect(r.kept).toEqual(['http://h/a', 'http://h/b'])
     expect(r.meta).toMatchObject({
       status: 'timedOut',
