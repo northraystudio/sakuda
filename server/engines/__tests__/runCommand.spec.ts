@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as realSleep } from 'node:timers/promises'
 import pino from 'pino'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OutputStreamError, runCommand, SpawnError } from '../runCommand'
 
 describe('runCommand', () => {
@@ -49,18 +50,40 @@ describe('runCommand', () => {
 
   it('kills the whole process group on timeout (grandchild dies)', async () => {
     const script = `const {spawn}=require('node:child_process');const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)']);process.stdout.write(String(c.pid)+'\\n');setInterval(()=>{},1000)`
-    const r = await runCommand({
-      ...base,
-      args: ['-e', script],
-      timeoutMs: 500,
-      killGraceMs: 200,
-    })
+    // The cap is armed at spawn. On a busy machine the child's Node startup
+    // can outlast it, so the group would be killed before the grandchild's
+    // pid is written (#33). Fake only the timers, wait in real time for the
+    // pid, then fire the cap ourselves. The SIGKILL grace timer is left
+    // unfired: both processes die on SIGTERM.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let r
+    try {
+      const pending = runCommand({
+        ...base,
+        args: ['-e', script],
+        timeoutMs: 500,
+        killGraceMs: 200,
+      })
+      const pidWritten = (): boolean =>
+        existsSync(base.stdoutPath) && readFileSync(base.stdoutPath, 'utf8').includes('\n')
+      const waitDeadline = Date.now() + 10_000
+      while (!pidWritten() && Date.now() < waitDeadline) await realSleep(20)
+      // Fire the cap even when the wait gave up, so the group is still killed
+      // rather than left running after the test fails.
+      vi.advanceTimersByTime(500)
+      r = await pending
+    } finally {
+      vi.useRealTimers()
+    }
     expect(r.timedOut).toBe(true)
     expect(r.signal === 'SIGTERM' || r.signal === 'SIGKILL').toBe(true)
+    // An empty stdout would read as pid 0, and kill(0, 0) signals our own
+    // group — it never throws, so the check below would fail misleadingly.
     const grandchildPid = Number(readFileSync(base.stdoutPath, 'utf8').trim())
+    expect(Number.isInteger(grandchildPid) && grandchildPid > 0).toBe(true)
     await new Promise((res) => setTimeout(res, 600))
     expect(() => process.kill(grandchildPid, 0)).toThrow(/ESRCH/)
-  }, 10_000)
+  }, 15_000)
 
   it('reports SIGKILL as oomKilled', async () => {
     const r = await runCommand({
