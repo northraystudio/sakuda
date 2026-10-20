@@ -85,12 +85,15 @@ describe('probeTargets', () => {
     try {
       const pending = probeTargets(input({ bin: writeFakeBin(tmp, FAKE_HANGS), timeoutMs: 2_000 }))
       const stdoutPath = join(tmp, 'work', 'httpx', 'stdout.jsonl')
-      while (!(
+      const lineWritten = (): boolean =>
         existsSync(stdoutPath) && readFileSync(stdoutPath, 'utf8').includes(FAKE_HANGS_LINE)
-      ))
-        await realSleep(20)
+      const waitDeadline = Date.now() + 10_000
+      while (!lineWritten() && Date.now() < waitDeadline) await realSleep(20)
+      // Fire the cap even when the wait gave up, so the fake is still killed
+      // rather than left running after the test fails.
       vi.advanceTimersByTime(2_000)
       r = await pending
+      if (!lineWritten()) throw new Error(`fake httpx never wrote its line to ${stdoutPath}`)
     } finally {
       vi.useRealTimers()
     }
