@@ -16,7 +16,24 @@ import { boundaryCases, type BoundaryCase } from './cases'
 import { operationsFromOpenApi, operationsFromShapes, type BoundaryOperation } from './operations'
 
 /** A response body is only compared, never stored; cap what is read of it. */
-const MAX_RESPONSE_CHARS = 1_000_000
+const MAX_RESPONSE_BYTES = 1_000_000
+
+/** Reads at most MAX_RESPONSE_BYTES of the body and cancels the stream past
+ * that, so a hostile or huge response is never buffered whole. */
+async function readCapped(res: Response): Promise<string> {
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  while (total < MAX_RESPONSE_BYTES) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    total += value.byteLength
+  }
+  await reader.cancel()
+  return Buffer.concat(chunks).subarray(0, MAX_RESPONSE_BYTES).toString('utf8')
+}
 
 const KIND_NAME: Record<BoundaryCase['kind'], string> = {
   'below-minimum': 'Server accepts a value below the documented minimum',
@@ -166,7 +183,7 @@ export const runBoundary: EngineRunner = async ({ scanId, site, env, logger, sig
             new URL(req.url).hostname,
           )
         : null,
-      body: (await res.text()).slice(0, MAX_RESPONSE_CHARS),
+      body: await readCapped(res),
     }
   }
 

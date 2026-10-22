@@ -62,6 +62,11 @@ beforeAll(async () => {
         return res.end()
       }
       if (req.method === 'GET' && stored.has(req.url ?? '')) return json(200, stored.get(req.url!))
+      // /huge: a body far over the read cap; the engine must not buffer it whole.
+      if (req.method === 'POST' && req.url === '/huge') {
+        res.writeHead(201, { 'content-type': 'application/json' })
+        return res.end(`{"pad":"${'x'.repeat(5_000_000)}"}`)
+      }
       // /offsite: Location on another origin must never be followed.
       if (req.method === 'POST' && req.url === '/offsite') {
         res.writeHead(201, { location: 'http://other.invalid/x' })
@@ -202,6 +207,12 @@ describe('runBoundary', () => {
     expect(out.meta.unverifiable).toBe(3)
     expect(out.warnings.join(' ')).toMatch(/could not be read back/)
     expect(seen.every((s) => s.method === 'POST')).toBe(true)
+  })
+
+  it('survives a response far larger than the read cap, as unverifiable', async () => {
+    const out = await run(baseSite({ openapiJson: openapi('/huge') }))
+    expect(out.findings).toHaveLength(0)
+    expect(out.meta.unverifiable).toBe(3)
   })
 
   it('stops at the request cap and says so', async () => {
