@@ -160,8 +160,9 @@ function shapeType(shape: JsonFieldShape): FieldType | null {
 /**
  * The JSON-body write operations of the site's approved POST/PUT/PATCH lines
  * whose request shape was captured. A shape holds names and JSON types only —
- * no ranges — so these operations can be probed for type confusion and
- * emptiness, never for a stated limit.
+ * no ranges, and not whether a field is required — so these operations are
+ * probed for type confusion only: an empty value is a legitimate input for an
+ * optional field, and sending one would turn a correct server into a finding.
  */
 export function operationsFromShapes(
   targets: ExpandedTarget[],
@@ -176,7 +177,7 @@ export function operationsFromShapes(
     let skipped = 0
     for (const [name, fieldShape] of Object.entries(shape.root.fields)) {
       const type = shapeType(fieldShape)
-      if (type) fields.push({ name, type, required: true })
+      if (type) fields.push({ name, type, required: false })
       else skipped++
     }
     if (fields.length > 0)

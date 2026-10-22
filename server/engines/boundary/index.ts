@@ -114,7 +114,7 @@ export const runBoundary: EngineRunner = async ({ scanId, site, env, logger, sig
   const openapiUrlOnly = !!site.openapiUrl && !site.openapiJson
   if (openapiUrlOnly)
     warnings.push(
-      'the site has an OpenAPI URL but no pasted JSON — boundary does not fetch it, so only wrong-type and empty values are tried (paste the document as JSON to test ranges, lengths and allowed values)',
+      'the site has an OpenAPI URL but no pasted JSON — boundary does not fetch it, so only wrong-type values are tried on captured body shapes (paste the document as JSON to test ranges, lengths and allowed values)',
     )
   const { targets } = expandNucleiTargets(site)
   const fromShapes = operationsFromShapes(targets, site.requestShapes)

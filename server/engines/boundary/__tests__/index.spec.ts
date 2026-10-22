@@ -246,13 +246,10 @@ describe('runBoundary', () => {
         },
       }),
     )
-    expect(out.findings.map((f) => f.ruleId).sort()).toEqual([
-      'boundary:empty',
-      'boundary:wrong-type',
-    ])
+    expect(out.findings.map((f) => f.ruleId)).toEqual(['boundary:wrong-type'])
   })
 
-  it('warns that an OpenAPI URL alone only allows type and empty probes', async () => {
+  it('warns that an OpenAPI URL alone only allows wrong-type probes', async () => {
     const out = await run(
       baseSite({
         openapiJson: null,

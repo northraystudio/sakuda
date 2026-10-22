@@ -179,8 +179,8 @@ describe('operationsFromShapes', () => {
       skippedFields: 1,
     })
     expect(ops[0]!.fields).toEqual([
-      { name: 'title', type: 'string', required: true },
-      { name: 'qty', type: 'number', required: true },
+      { name: 'title', type: 'string', required: false },
+      { name: 'qty', type: 'number', required: false },
     ])
   })
 })

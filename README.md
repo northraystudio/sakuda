@@ -307,7 +307,8 @@ selected they run in this fixed order, each with its own time budget:
    identical to what was sent** — a 2xx alone is not a finding, and a server
    that rejects (4xx) or converts the value (`"abc"` → `0`) is not flagged.
    Ranges come from a pasted OpenAPI JSON document (`openapiJson`); a saved
-   write line with a captured body shape gets type and empty probes only. An
+   write line with a captured body shape gets wrong-type probes only (a shape
+   does not say which fields are required). An
    `openapiUrl` alone is not fetched. It **creates or changes records on the
    target** (and never sends `DELETE`), runs **only under active injection
    checks**, is off by default in the engine picker, and sends only to the
