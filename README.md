@@ -2,6 +2,11 @@
 
 English | [日本語](README.ja.md)
 
+> **Before relying on a clean scan:** read
+> [How far can automated vulnerability scanning reach?](docs/coverage-and-limits.md)
+> — what sakuda finds on its own, what automated DAST cannot reach in principle,
+> and how to cover the rest.
+
 ## Contents
 
 - [Coverage and limits](#coverage-and-limits)
@@ -81,7 +86,8 @@ blind to what needs human reasoning:
 
 Read a clean result as "nothing these engines found within this budget", and
 pair sakuda with manual testing — use it to surface issues fast, not as a
-completeness guarantee.
+completeness guarantee. The full write-up, verified on OWASP Juice Shop, is in
+[docs/coverage-and-limits.md](docs/coverage-and-limits.md).
 
 ## Quick start (Docker)
 
