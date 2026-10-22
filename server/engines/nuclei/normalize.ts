@@ -215,8 +215,9 @@ export function redactOastJsonl(text: string): { text: string; changed: boolean 
       'full-id': stringOrUndefined(interaction['full-id']),
       'unique-id': stringOrUndefined(interaction['unique-id']),
     }
-    changed = true
-    return maskOastIds(JSON.stringify({ ...parsed, interaction }), ids)
+    const rewritten = maskOastIds(JSON.stringify({ ...parsed, interaction }), ids)
+    if (rewritten !== line) changed = true
+    return rewritten
   })
   return { text: out.join('\n'), changed }
 }

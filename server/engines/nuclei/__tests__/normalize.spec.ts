@@ -342,4 +342,9 @@ describe('redactOastJsonl (#43)', () => {
     const input = `${highLine}\n${infoLine}\n`
     expect(redactOastJsonl(input)).toEqual({ text: input, changed: false })
   })
+
+  it('reports no change for an interaction line that is already redacted', () => {
+    const once = redactOastJsonl(`${oast}\n`).text
+    expect(redactOastJsonl(once)).toEqual({ text: once, changed: false })
+  })
 })

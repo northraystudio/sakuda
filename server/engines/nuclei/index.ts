@@ -657,7 +657,8 @@ async function redactRetainedJsonl(
   const redacted = redactOastJsonl(jsonl)
   if (!redacted.changed) return undefined
   try {
-    await writeFile(outputFile, redacted.text)
+    // mode applies only if the file vanished since it was read
+    await writeFile(outputFile, redacted.text, { mode: 0o600 })
     return undefined
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
