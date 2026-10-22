@@ -31,7 +31,7 @@ function split(all: ExpandedTarget[], keep: (t: ExpandedTarget) => boolean): Eng
  * zapFe requests front-base lines via `zapFeRequestTargets` and probes hash
  * routes via `zapFeHashRouteTargets`; zap-api builds its generated doc from
  * active non-GET lines; dalfox takes GET server-reachable lines under active
- * checks) — restated over the same `expandNucleiTargets` result so the page
+ * checks; boundary takes the POST/PUT/PATCH lines under active checks) — restated over the same `expandNucleiTargets` result so the page
  * cannot drift from the adapters. Paths only: no host, no body shape.
  */
 export function summarizeTargets(site: TargetSummarySite): TargetSummary {
@@ -73,12 +73,20 @@ export function summarizeTargets(site: TargetSummarySite): TargetSummary {
   const dalfox = split(saved, (t) => activeChecks && t.method === 'GET' && !isHashRoute(t))
   dalfox.available = activeChecks
 
+  // boundary writes bodies to POST/PUT/PATCH lines (those with a captured
+  // shape) and to the pasted OpenAPI's JSON operations — never DELETE.
+  const boundary = split(
+    saved,
+    (t) => activeChecks && ['POST', 'PUT', 'PATCH'].includes(t.method) && !isHashRoute(t),
+  )
+  boundary.available = activeChecks
+
   return {
     configured: expanded.configured,
     activeChecks,
     common: saved.map(toRef),
     excludedCount: expanded.excluded.length,
-    engines: { nuclei, 'zap-fe': zapFe, 'zap-api': zapApi, dalfox },
+    engines: { nuclei, 'zap-fe': zapFe, 'zap-api': zapApi, dalfox, boundary },
     zapApiSource,
   }
 }

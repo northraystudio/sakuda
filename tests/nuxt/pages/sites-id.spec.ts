@@ -49,6 +49,7 @@ function summaryFixture(overrides: Partial<TargetSummary> = {}): TargetSummary {
       'zap-fe': emptyEngine,
       'zap-api': { ...emptyEngine, available: false },
       dalfox: { ...emptyEngine, available: false },
+      boundary: { ...emptyEngine, available: false },
     },
     zapApiSource: 'none',
     ...overrides,
@@ -119,6 +120,7 @@ describe('pages/sites/[id] — Start scan engine defaults', () => {
           'zap-fe': { available: true, targets: [root], skipped: [login, hash] },
           'zap-api': { available: false, targets: [], skipped: [root, login, hash] },
           dalfox: { available: false, targets: [], skipped: [root, login, hash] },
+          boundary: { available: false, targets: [], skipped: [root, login, hash] },
         },
       }),
     )

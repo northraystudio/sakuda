@@ -2,7 +2,7 @@ import type { BrowserStorageItem, BrowserStorageName } from '../schemas/browserS
 import type { Header } from '../schemas/headers'
 import type { TargetMethod } from '../utils/nucleiPaths'
 
-export type Engine = 'nuclei' | 'zap-api' | 'zap-fe' | 'dalfox'
+export type Engine = 'nuclei' | 'zap-api' | 'zap-fe' | 'dalfox' | 'boundary'
 export const RISK_TAGS = ['dos', 'fuzz', 'intrusive'] as const
 export type RiskTag = (typeof RISK_TAGS)[number]
 export type Severity = 'critical' | 'high' | 'medium'

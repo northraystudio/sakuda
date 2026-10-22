@@ -75,6 +75,19 @@ describe('summarizeTargets', () => {
     })
   })
 
+  it('boundary: takes the POST/PUT/PATCH lines only under active checks', () => {
+    expect(summarizeTargets(site).engines.boundary).toEqual({
+      available: false,
+      targets: [],
+      skipped: [root, hash, login, api],
+    })
+    expect(summarizeTargets(active).engines.boundary).toEqual({
+      available: true,
+      targets: [login],
+      skipped: [root, hash, api],
+    })
+  })
+
   it('names the zap-api source: openapi alone, or openapi+generated', () => {
     expect(
       summarizeTargets({ ...site, openapiUrl: 'http://localhost:8080/doc.json' }).zapApiSource,

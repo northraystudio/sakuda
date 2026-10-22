@@ -154,6 +154,11 @@ const EnvObject = z.object({
   // aimed at a curated saved-target list, not a large recon dump.
   SAKUDA_DALFOX_CONCURRENCY: z.coerce.number().int().positive().default(10),
   SAKUDA_DALFOX_MAX_TARGETS: z.coerce.number().int().positive().default(50),
+  // Write-side input-validation probe (#37). Every request it sends — probe or
+  // read-back — counts toward the cap; each one also has its own timeout.
+  SAKUDA_BOUNDARY_MAX_REQUESTS: z.coerce.number().int().positive().default(100),
+  SAKUDA_BOUNDARY_MAX_MINUTES: z.coerce.number().int().positive().default(5),
+  SAKUDA_BOUNDARY_REQUEST_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(10),
   SAKUDA_HTTPX_BIN: z.string().default('httpx'),
   SAKUDA_HTTPX_MAX_MINUTES: z.coerce.number().int().positive().default(5),
   SAKUDA_HTTPX_PRUNE_STATUS_CODES: pruneStatusCodes,
@@ -230,6 +235,12 @@ export interface Env {
     concurrency: number
     maxTargets: number
   }
+  /** In-process write probe (#37): no binary, only its own caps. */
+  boundary: {
+    maxRequests: number
+    maxMinutes: number
+    requestTimeoutSeconds: number
+  }
   /** nuclei's pre-scan liveness probe (#91): one GET per target before the
    * targets file is written. Annotates by default; drops a target only for a
    * status listed in `pruneStatusCodes` (opt-in, empty by default). */
@@ -280,6 +291,11 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
       oast: toOastConfig(v.SAKUDA_OAST, v.SAKUDA_OAST_TOKEN),
     },
     katana: { bin: resolveExecutablePath(v.SAKUDA_KATANA_BIN) },
+    boundary: {
+      maxRequests: v.SAKUDA_BOUNDARY_MAX_REQUESTS,
+      maxMinutes: v.SAKUDA_BOUNDARY_MAX_MINUTES,
+      requestTimeoutSeconds: v.SAKUDA_BOUNDARY_REQUEST_TIMEOUT_SECONDS,
+    },
     dalfox: {
       bin: resolveExecutablePath(v.SAKUDA_DALFOX_BIN),
       maxMinutes: v.SAKUDA_DALFOX_MAX_MINUTES,

@@ -33,6 +33,8 @@ function engineSpecificRows(engine: Engine, meta: Record<string, unknown>): stri
       return zapRows(meta, false)
     case 'dalfox':
       return dalfoxRows(meta)
+    case 'boundary':
+      return boundaryRows(meta)
     default: {
       const exhaustive: never = engine
       return exhaustive
@@ -95,6 +97,31 @@ function dalfoxRows(meta: Record<string, unknown>): string[] {
     const n = metaNumber(meta, 'unreachableTargets')
     rows.push(`| Target unavailable | Yes${n !== undefined ? ` (${n} unreachable)` : ''} |`)
   }
+  return rows
+}
+
+function boundaryRows(meta: Record<string, unknown>): string[] {
+  const rows: string[] = []
+  if (meta.skipped === true) {
+    rows.push('| Skipped | Active injection checks are off |')
+    return rows
+  }
+  const operations = metaNumber(meta, 'operations')
+  if (operations !== undefined) rows.push(`| Write operations | ${operations} |`)
+  const cases = metaNumber(meta, 'casesPlanned')
+  if (cases !== undefined) rows.push(`| Cases planned | ${cases} |`)
+  const requests = metaNumber(meta, 'requestsSent')
+  if (requests !== undefined) rows.push(`| Requests sent | ${requests} |`)
+  const accepted = metaNumber(meta, 'accepted')
+  if (accepted !== undefined) rows.push(`| Accepted (stored as sent) | ${accepted} |`)
+  const rejected = metaNumber(meta, 'rejected')
+  if (rejected !== undefined) rows.push(`| Rejected (4xx/5xx) | ${rejected} |`)
+  const coerced = metaNumber(meta, 'coerced')
+  if (coerced !== undefined) rows.push(`| Coerced | ${coerced} |`)
+  const unverifiable = metaNumber(meta, 'unverifiable')
+  if (unverifiable !== undefined) rows.push(`| Not verifiable | ${unverifiable} |`)
+  if (metaBoolean(meta, 'truncated'))
+    rows.push('| Stopped early | Yes (request cap or time budget) |')
   return rows
 }
 

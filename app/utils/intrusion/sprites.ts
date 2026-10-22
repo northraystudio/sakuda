@@ -12,6 +12,8 @@ export const ENGINE_ICONS: Record<Engine, Bitmap> = {
   'zap-fe': ['##....', '.##...', '#####.', '######', '#####.', '.##...', '##....'],
   // Narrow, pointed interceptor for the XSS pass.
   dalfox: ['#.....', '###...', '.####.', '######', '.####.', '###...', '#.....'],
+  // Notched bar for the write-side limit probe.
+  boundary: ['######', '#....#', '######', '######', '######', '#....#', '######'],
   // Heavy block for the template barrage.
   nuclei: ['###...', '####..', '.#####', '.#####', '.#####', '####..', '###...'],
 }
@@ -38,6 +40,7 @@ export const ENGINE_SHORT_LABELS: Record<Engine, string> = {
   'zap-api': 'ZAP API',
   'zap-fe': 'ZAP Frontend',
   dalfox: 'Dalfox',
+  boundary: 'Boundary',
   nuclei: 'Nuclei',
 }
 
@@ -47,6 +50,7 @@ export const ENGINE_COLOR_TOKENS: Record<Engine, string> = {
   'zap-api': '--color-info',
   'zap-fe': '--color-info',
   dalfox: '--color-sale',
+  boundary: '--color-accent-teal',
 }
 export const QUEUED_COLOR_TOKEN = '--color-ash'
 export const MUTED_TEXT_TOKEN = '--color-mute'

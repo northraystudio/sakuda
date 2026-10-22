@@ -1,4 +1,5 @@
 import type { Engine } from '#shared/types/api'
+import { runBoundary } from './boundary'
 import { runDalfox } from './dalfox'
 import { runNuclei } from './nuclei'
 import type { EngineRunner } from './types'
@@ -10,6 +11,7 @@ export const engineRunners: Record<Engine, EngineRunner> = {
   'zap-api': runZapApi,
   'zap-fe': runZapFe,
   dalfox: runDalfox,
+  boundary: runBoundary,
 }
 
 /** Sorts and dedupes a scan's requested engines into their fixed run order

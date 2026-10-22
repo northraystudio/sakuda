@@ -12,6 +12,7 @@ const env = {
   nucleiMaxMinutes: 60,
   httpxMaxMinutes: 5,
   dalfoxMaxMinutes: 10,
+  boundaryMaxMinutes: 5,
   engineGraceMinutes: 10,
 }
 const off = { activeScan: false, domXssProbe: false }
@@ -71,18 +72,27 @@ describe('engineTimeBudget (#84)', () => {
     expect(b.totalMinutes).toBe(10 + 45 + DOM_XSS_PROBE_BUDGET_MINUTES + 5 + 10)
   })
 
+  it('boundary: its own cap only — it runs in-process, so there is no shutdown grace', () => {
+    expect(engineTimeBudget('boundary', site, env, off)).toEqual({
+      parts: [{ label: 'boundary (SAKUDA_BOUNDARY_MAX_MINUTES)', minutes: 5 }],
+      totalMinutes: 5,
+    })
+  })
+
   it('timeBudgetEnv picks the env fields the budget depends on', () => {
     expect(
       timeBudgetEnv({
         nuclei: { bin: 'nuclei', templatesDir: '/t', dastTemplatesDir: '/d', maxMinutes: 30 },
         httpx: { bin: 'httpx', maxMinutes: 3, pruneStatusCodes: [] },
         dalfox: { bin: 'dalfox', maxMinutes: 12, concurrency: 10, maxTargets: 50 },
+        boundary: { maxRequests: 100, maxMinutes: 4, requestTimeoutSeconds: 10 },
         engineGraceMinutes: 7,
       }),
     ).toEqual({
       nucleiMaxMinutes: 30,
       httpxMaxMinutes: 3,
       dalfoxMaxMinutes: 12,
+      boundaryMaxMinutes: 4,
       engineGraceMinutes: 7,
     })
   })

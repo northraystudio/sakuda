@@ -13,6 +13,7 @@ export interface TimeBudgetEnv {
   /** SAKUDA_NUCLEI_MAX_MINUTES; a site's `nucleiMaxMinutes` overrides it. */
   nucleiMaxMinutes: number
   dalfoxMaxMinutes: number
+  boundaryMaxMinutes: number
   /** The httpx liveness probe that runs ahead of nuclei's phases (#91). */
   httpxMaxMinutes: number
   engineGraceMinutes: number
@@ -26,12 +27,13 @@ export interface TimeBudgetFlags {
 
 /** The env fields the budget depends on, picked from the validated env. */
 export function timeBudgetEnv(
-  env: Pick<Env, 'nuclei' | 'httpx' | 'dalfox' | 'engineGraceMinutes'>,
+  env: Pick<Env, 'nuclei' | 'httpx' | 'dalfox' | 'boundary' | 'engineGraceMinutes'>,
 ): TimeBudgetEnv {
   return {
     nucleiMaxMinutes: env.nuclei.maxMinutes,
     httpxMaxMinutes: env.httpx.maxMinutes,
     dalfoxMaxMinutes: env.dalfox.maxMinutes,
+    boundaryMaxMinutes: env.boundary.maxMinutes,
     engineGraceMinutes: env.engineGraceMinutes,
   }
 }
@@ -98,6 +100,13 @@ export function engineTimeBudget(
         { label: 'dalfox (SAKUDA_DALFOX_MAX_MINUTES)', minutes: env.dalfoxMaxMinutes },
         { label: 'shutdown grace', minutes: env.engineGraceMinutes },
       )
+      break
+    case 'boundary':
+      // In-process: the engine stops itself at this deadline, so no grace.
+      parts.push({
+        label: 'boundary (SAKUDA_BOUNDARY_MAX_MINUTES)',
+        minutes: env.boundaryMaxMinutes,
+      })
       break
     default: {
       const exhaustive: never = engine

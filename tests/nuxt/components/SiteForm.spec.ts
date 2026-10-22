@@ -584,7 +584,13 @@ describe('SiteForm', () => {
     }
     expect(badgesOf('section-site')).toEqual(['All engines'])
     expect(badgesOf('section-auth')).toEqual(['All engines'])
-    expect(badgesOf('section-active')).toEqual(['Nuclei', 'ZAP frontend', 'ZAP API', 'Dalfox'])
+    expect(badgesOf('section-active')).toEqual([
+      'Nuclei',
+      'ZAP frontend',
+      'ZAP API',
+      'Dalfox',
+      'Boundary',
+    ])
     expect(badgesOf('section-crawl')).toEqual(['Discovery'])
     expect(badgesOf('section-targets')).toEqual(['All engines'])
     expect(badgesOf('section-nuclei')).toEqual(['Nuclei'])
