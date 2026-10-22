@@ -41,6 +41,7 @@ import {
   parseNucleiJsonl,
   parseNucleiStats,
   parseSkippedHosts,
+  redactOastJsonl,
   type NucleiStats,
   type SkippedHost,
 } from './normalize'
@@ -78,6 +79,8 @@ interface PhaseOutcome {
   /** Hosts nuclei dropped mid-run; non-empty only when status is 'partial'. */
   skippedHosts: SkippedHost[]
   invalidLines: number
+  /** Set when the retained JSONL could not be redacted (#43). */
+  redactWarning: string | undefined
 }
 
 /** What a GET phase did, for `meta`: `skipped` = not attempted (the DAST
@@ -254,6 +257,7 @@ async function runNucleiPhases(
     }
     if (phase.invalidLines > 0)
       warnings.push(`${phase.invalidLines} unparsable JSONL line(s) ignored (${label} phase)`)
+    if (phase.redactWarning) warnings.push(phase.redactWarning)
   }
 
   // How many nuclei runs will follow the one about to start, so each can
@@ -637,6 +641,28 @@ async function runNucleiPhase(i: PhaseInput): Promise<PhaseOutcome> {
     stats,
     skippedHosts,
     invalidLines,
+    redactWarning: await redactRetainedJsonl(i.outputFile, jsonl, i.logger),
+  }
+}
+
+/** Strips the OAST ids and raw callback request from the JSONL left in the
+ * work dir, after it has been normalized (#43). Overwrites in place, so the
+ * file keeps its 0600 mode. A failed write keeps the findings and returns a
+ * warning naming the file; the ids themselves are never logged. */
+async function redactRetainedJsonl(
+  outputFile: string,
+  jsonl: string,
+  logger: EngineInput['logger'],
+): Promise<string | undefined> {
+  const redacted = redactOastJsonl(jsonl)
+  if (!redacted.changed) return undefined
+  try {
+    await writeFile(outputFile, redacted.text)
+    return undefined
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.warn({ engine: 'nuclei', outputFile, err: reason }, 'nuclei oast jsonl redaction failed')
+    return `could not remove OAST correlation ids from ${outputFile} (${reason}); delete the file or check the work dir's permissions`
   }
 }
 

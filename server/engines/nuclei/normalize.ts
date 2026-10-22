@@ -192,6 +192,43 @@ function maskOastIds(url: string, i: OastInteraction | undefined): string {
   return masked
 }
 
+/** Rewrites nuclei's JSONL so the retained artifact matches what sakuda
+ * stores (#43): on lines with an `interaction`, drops `raw-request` /
+ * `raw-response` and masks the correlation ids everywhere on the line (they
+ * also appear in the payload URLs). Every other line — and any line that is
+ * not JSON — is kept byte for byte. `changed` is false when nothing needed
+ * rewriting, so the caller can skip the write. */
+export function redactOastJsonl(text: string): { text: string; changed: boolean } {
+  let changed = false
+  const out = text.split('\n').map((line) => {
+    if (!line.includes('"interaction"')) return line
+    let parsed: unknown
+    // boundary: an unparsable line is left untouched (parseNucleiJsonl counts it)
+    try {
+      parsed = JSON.parse(line)
+    } catch {
+      return line
+    }
+    if (!isRecord(parsed) || !isRecord(parsed.interaction)) return line
+    const { 'raw-request': _req, 'raw-response': _res, ...interaction } = parsed.interaction
+    const ids = {
+      'full-id': stringOrUndefined(interaction['full-id']),
+      'unique-id': stringOrUndefined(interaction['unique-id']),
+    }
+    changed = true
+    return maskOastIds(JSON.stringify({ ...parsed, interaction }), ids)
+  })
+  return { text: out.join('\n'), changed }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function stringOrUndefined(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined
+}
+
 export interface SkippedHost {
   host: string
   /** Error count at which nuclei dropped the host (its `-max-host-error` guard). */

@@ -1032,3 +1032,95 @@ describe('runNuclei OAST / interactsh (#35)', () => {
     expect(JSON.stringify(out.warnings)).not.toContain('tok-secret-xyz')
   })
 })
+
+// Writes an OAST match (with its correlation id and raw callback) plus a
+// plain finding and an unparsable line to the DAST phase's output, as nuclei
+// v3.11.1 does; FAKE_JSONL_MODE sets the file mode it leaves behind.
+const OAST_ID = 'd3kq0r1c0abcdefghijklmnopqrstuvwx'
+const FAKE_OAST_MATCH = `#!/usr/bin/env node
+const fs = require('node:fs')
+const args = process.argv.slice(2)
+const outFile = args[args.indexOf('-o') + 1]
+const id = '${OAST_ID}'
+const oast = {
+  'template-id': 'blind-ssrf',
+  info: { name: 'Blind SSRF OAST Detection', severity: 'medium' },
+  host: 'localhost',
+  'matched-at': 'http://localhost:3001/fetch?url=https://' + id + '.oast.pro',
+  interaction: {
+    protocol: 'http', 'unique-id': id, 'full-id': id, 'remote-address': '203.0.113.7',
+    timestamp: '2026-10-22T09:16:42Z',
+    'raw-request': 'GET / HTTP/1.1\\r\\nHost: ' + id + '.oast.pro\\r\\nUser-Agent: internal-fetcher\\r\\n\\r\\n',
+    'raw-response': 'HTTP/1.1 200 OK\\r\\n\\r\\n',
+  },
+}
+const plain = { 'template-id': 'fake-high', info: { name: 'Fake High', severity: 'high' }, 'matched-at': 'http://localhost:3001/a' }
+const body = outFile.includes('dast')
+  ? JSON.stringify(oast) + '\\n' + JSON.stringify(plain) + '\\n{not json\\n'
+  : ''
+fs.writeFileSync(outFile, body, { mode: 0o600 })
+fs.chmodSync(outFile, parseInt(process.env.FAKE_JSONL_MODE || '600', 8))
+process.exit(0)
+`
+
+describe('runNuclei retained JSONL redaction (#43)', () => {
+  let tmp: string
+  const logger = pino({ level: 'silent' })
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'sakuda-nuclei-redact-'))
+  })
+
+  async function run(fakeEnv: Record<string, string> = {}) {
+    const fakeBin = writeFakeBin(tmp, 'fake-nuclei.js', FAKE_OAST_MATCH)
+    const env: Env = parseEnv({
+      SAKUDA_ENCRYPTION_KEY: key,
+      SAKUDA_NUCLEI_BIN: fakeBin,
+      ...FAKE_HTTPX_ENV,
+      SAKUDA_DATA_DIR: tmp,
+    })
+    const workDir = join(tmp, 'work')
+    vi.stubEnv('FAKE_JSONL_MODE', fakeEnv.FAKE_JSONL_MODE ?? '600')
+    try {
+      const out = await runNuclei({
+        scanId: 'scan-redact',
+        engine: 'nuclei',
+        site: baseSite({
+          allowMutatingRequests: true,
+          nucleiPaths: '/fetch?url=https://example.com',
+        }),
+        workDir,
+        env,
+        logger,
+        signal: new AbortController().signal,
+      })
+      return { out, jsonlPath: join(workDir, 'dast-findings.jsonl') }
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }
+
+  it('drops the correlation id and raw callback from the kept JSONL, keeping the findings and 0600', async () => {
+    const { out, jsonlPath } = await run()
+    const kept = readFileSync(jsonlPath, 'utf8')
+    expect(kept).not.toContain(OAST_ID)
+    expect(kept).not.toContain('raw-request')
+    expect(kept).not.toContain('internal-fetcher')
+    expect(kept).toContain('https://<oast-id>.oast.pro')
+    expect(kept).toContain('"remote-address":"203.0.113.7"')
+    // the unrelated and the unparsable lines are untouched
+    expect(kept).toContain('"template-id":"fake-high"')
+    expect(kept).toContain('{not json')
+    expect(statSync(jsonlPath).mode & 0o777).toBe(0o600)
+    expect(out.findings.map((f) => f.ruleId).sort()).toEqual(['blind-ssrf', 'fake-high'])
+    expect(out.warnings.join('\n')).not.toMatch(/could not remove OAST/)
+  })
+
+  it('a failed rewrite keeps the findings and warns with the file, never the id', async () => {
+    const { out, jsonlPath } = await run({ FAKE_JSONL_MODE: '400' })
+    expect(out.findings.map((f) => f.ruleId)).toContain('blind-ssrf')
+    const w = out.warnings.find((x) => x.startsWith('could not remove OAST correlation ids'))
+    expect(w).toContain(jsonlPath)
+    expect(JSON.stringify(out.warnings)).not.toContain(OAST_ID)
+  })
+})
