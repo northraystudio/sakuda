@@ -36,6 +36,19 @@ function resolveSchema(root: Json, schema: unknown): Json | null {
   return null
 }
 
+const REQUEST_BODY_REF_PREFIX = '#/components/requestBodies/'
+
+/** A `requestBody`, following one local `$ref` to `components.requestBodies`; null otherwise. */
+function resolveRequestBody(root: Json, body: unknown): Json | null {
+  if (!isObject(body)) return null
+  const ref = body.$ref
+  if (typeof ref !== 'string') return body
+  if (!ref.startsWith(REQUEST_BODY_REF_PREFIX)) return null
+  const bodies = isObject(root.components) ? root.components.requestBodies : undefined
+  const resolved = isObject(bodies) ? bodies[ref.slice(REQUEST_BODY_REF_PREFIX.length)] : undefined
+  return isObject(resolved) && typeof resolved.$ref !== 'string' ? resolved : null
+}
+
 function fieldFromSchema(name: string, schema: Json, required: boolean): FieldSpec | null {
   const type = schema.type
   if (type !== 'string' && type !== 'integer' && type !== 'number' && type !== 'boolean')
@@ -114,8 +127,10 @@ export function operationsFromOpenApi(
     if (!isObject(item)) continue
     for (const method of WRITE_METHODS) {
       const operation = item[method.toLowerCase()]
-      if (!isObject(operation) || !isObject(operation.requestBody)) continue
-      const content = operation.requestBody.content
+      if (!isObject(operation)) continue
+      const requestBody = resolveRequestBody(root, operation.requestBody)
+      if (!requestBody) continue
+      const content = requestBody.content
       const media = isObject(content) ? content['application/json'] : undefined
       const schema = isObject(media) ? resolveSchema(root, media.schema) : null
       const parsed = schema ? fieldsFromObjectSchema(root, schema) : null

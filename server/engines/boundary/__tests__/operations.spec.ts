@@ -100,6 +100,38 @@ describe('operationsFromOpenApi', () => {
     }
     expect(operationsFromOpenApi(JSON.stringify(external), 'http://api.test', never)).toEqual([])
   })
+
+  it('resolves a requestBody $ref to components.requestBodies and rejects other refs', () => {
+    const body = (ref: string) => ({
+      paths: { '/x': { post: { requestBody: { $ref: ref } } } },
+      components: {
+        requestBodies: {
+          Item: {
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { qty: { type: 'integer', minimum: 1 } } },
+              },
+            },
+          },
+          Loop: { $ref: '#/components/requestBodies/Loop' },
+        },
+      },
+    })
+    const ops = operationsFromOpenApi(
+      JSON.stringify(body('#/components/requestBodies/Item')),
+      'http://api.test',
+      never,
+    )
+    expect(ops).toHaveLength(1)
+    expect(ops[0]?.fields.map((f) => f.name)).toEqual(['qty'])
+    for (const ref of [
+      '#/components/requestBodies/Loop',
+      '#/components/requestBodies/Missing',
+      'http://evil.test/b.json',
+    ]) {
+      expect(operationsFromOpenApi(JSON.stringify(body(ref)), 'http://api.test', never)).toEqual([])
+    }
+  })
 })
 
 describe('operationsFromShapes', () => {
