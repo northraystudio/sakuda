@@ -95,10 +95,11 @@ export type OastConfig =
   | { mode: 'self-hosted'; serverUrl: string; token: string | undefined }
 
 const OAST_ERROR =
-  'must be public, off, or the http(s) URL of a self-hosted interactsh server (no credentials in the URL; use SAKUDA_OAST_TOKEN)'
+  'must be public, off, or the http(s)://host[:port] origin of a self-hosted interactsh server (no credentials, path or query; use SAKUDA_OAST_TOKEN for a token)'
 
-/** `public` (default, also when empty) | `off` | `http(s)://host[:port]`. A
- * URL with userinfo is refused: it would end up on nuclei's argv. */
+/** `public` (default, also when empty) | `off` | `http(s)://host[:port]`.
+ * Only an origin is accepted: userinfo, a path, a query or a fragment would
+ * end up on nuclei's argv, in logs and in `meta`. */
 const oastServer = z.preprocess(
   (v) => (typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim()) : v),
   z
@@ -110,7 +111,13 @@ const oastServer = z.preprocess(
         z.url({ protocol: /^https?$/ }).refine((u) => {
           if (!URL.canParse(u)) return false
           const parsed = new URL(u)
-          return parsed.username === '' && parsed.password === ''
+          return (
+            parsed.username === '' &&
+            parsed.password === '' &&
+            parsed.pathname === '/' &&
+            parsed.search === '' &&
+            parsed.hash === ''
+          )
         }),
       ],
       { error: OAST_ERROR },

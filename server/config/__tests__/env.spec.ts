@@ -225,6 +225,9 @@ describe('SAKUDA_OAST / SAKUDA_OAST_TOKEN (#35)', () => {
     'ftp://oast.example.test',
     'oast.example.test',
     'https://user:pw@oast.example.test',
+    'https://oast.example.test/path',
+    'https://oast.example.test/?token=abc',
+    'https://oast.example.test/#frag',
   ])('rejects SAKUDA_OAST=%s at startup', (value) => {
     expect(() => oastOf({ SAKUDA_OAST: value })).toThrow(/SAKUDA_OAST/)
   })
