@@ -174,6 +174,8 @@ Override per invocation with `make up SAKUDA_PORT=3005`.
 | `SAKUDA_NUCLEI_DAST_TEMPLATES`    | `/opt/nuclei-templates/dast`                                           | DAST (fuzzing) templates, loaded only for sites with "Active injection checks" on.                                               |
 | `SAKUDA_NUCLEI_MAX_MINUTES`       | `60`                                                                   | Hard timeout for a nuclei run, shared across its phases (DAST / signature / OpenAPI).                                            |
 | `SAKUDA_NUCLEI_CONCURRENCY`       | `25`                                                                   | nuclei parallelism (`-c`). Lower it for a slow or fragile target so a run wastes less time waiting on slow responses.            |
+| `SAKUDA_OAST`                     | `public`                                                               | Where nuclei's OAST (interactsh) callbacks go: `public` servers, `off` (`-ni`), or a self-hosted `http(s)://` URL. See below.    |
+| `SAKUDA_OAST_TOKEN`               | _(unset)_                                                              | Token for a self-hosted interactsh server (an error with `public`/`off`). Sent in a 0600 config file, never argv.                |
 | `SAKUDA_KATANA_BIN`               | `katana` (`/usr/local/bin/katana` in the image)                        | Path to the katana binary (discovery's second URL source). Its time budget is the site's spider minutes; no separate knob.       |
 | `SAKUDA_DALFOX_BIN`               | `dalfox` (`/usr/local/bin/dalfox` in the image)                        | Path to the dalfox binary (the reflected/DOM XSS engine). Runs only under active injection checks.                               |
 | `SAKUDA_DALFOX_MAX_MINUTES`       | `10`                                                                   | Wall-clock budget for one dalfox run.                                                                                            |
@@ -336,6 +338,27 @@ and even then a target is removed only on positive evidence — a target with
 no line, a transport failure, or a 405 / 429 / 5xx is "unknown" and stays.
 If httpx is missing, fails, or hits `SAKUDA_HTTPX_MAX_MINUTES`, the full list
 goes to nuclei and the scan says so in a warning.
+
+**Out-of-band callbacks (OAST).** Some flaws return nothing in the response —
+a blind SSRF, an out-of-band XXE / SSTI / command injection. nuclei detects
+them by injecting a unique [interactsh](https://github.com/projectdiscovery/interactsh)
+URL and waiting for the target server to call it. A finding made this way
+carries the callback as its evidence (`OAST http callback from <ip> at <time>`),
+and its stored URL has the per-scan correlation id masked as `<oast-id>`.
+**By default (`SAKUDA_OAST=public`) this means traffic to ProjectDiscovery's
+public interactsh servers** (`oast.pro`, `oast.live`, …): the scanned server
+connects to them, and nuclei registers with and polls them. This is nuclei's
+own default, made visible in the engine's `meta.oast`. Set `SAKUDA_OAST=off`
+to send nothing outside the scan (nuclei then excludes every OAST template,
+and the run says so in a warning), or point it at your own interactsh server
+(`SAKUDA_OAST=https://oast.example.internal`, plus `SAKUDA_OAST_TOKEN` if it
+needs one). Before nuclei starts, sakuda sends one GET to the server; if none
+answers, the run warns that out-of-band checks could not receive callbacks
+(`meta.oast.status = unavailable`) instead of silently finding nothing. That
+check cannot tell whether a token is valid, nor whether the _target_ can reach
+the server. The blind-SSRF template only rewrites a parameter whose value
+already looks like a URL or a path, so save such targets with a URL value
+(e.g. `/fetch?url=https://example.com`, not `/fetch?url=`).
 
 **Partial runs are reported honestly.** If an engine hits its time limit it is
 marked _stopped at limit_ rather than shown as a clean finish, and it keeps

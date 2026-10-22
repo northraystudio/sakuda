@@ -229,3 +229,66 @@ describe('parseSkippedHosts (#82)', () => {
     expect(parseSkippedHosts('')).toEqual([])
   })
 })
+
+describe('OAST callback evidence (#35)', () => {
+  // Shape observed from nuclei v3.11.1 + blind-ssrf.yaml against a proxying
+  // endpoint (2026-10-22); ids replaced, raw-request/raw-response shortened.
+  const UID = 'd3kq0r1c0abcdefghijklmnopqrstuvwx'
+  const oastLine = {
+    'template-id': 'blind-ssrf',
+    info: { name: 'Blind SSRF OAST Detection', severity: 'medium', tags: ['ssrf', 'dast', 'oast'] },
+    type: 'http',
+    host: '127.0.0.1',
+    url: 'http://127.0.0.1:8000/fetch?url=https://example.com',
+    'matched-at': `http://127.0.0.1:8000/fetch?url=https://${UID}.oast.pro`,
+    interaction: {
+      protocol: 'http',
+      'unique-id': UID,
+      'full-id': UID,
+      'remote-address': '203.0.113.7',
+      timestamp: '2026-10-22T09:16:42.59198473Z',
+      'raw-request': 'GET / HTTP/1.1\r\nHost: x.oast.pro\r\n\r\n',
+      'raw-response': 'HTTP/1.1 200 OK\r\n\r\n',
+    },
+  }
+  const normalizeOne = (line: unknown) => {
+    const { lines } = parseNucleiJsonl(JSON.stringify(line))
+    return normalizeNucleiLines(lines, (u) => u).findings
+  }
+
+  it('reports the callback as the evidence: protocol, who called back, and when', () => {
+    const [f] = normalizeOne(oastLine)
+    expect(f!.severity).toBe('medium')
+    expect(f!.evidence).toBe('OAST http callback from 203.0.113.7 at 2026-10-22T09:16:42.59198473Z')
+    expect(f!.raw).toMatchObject({
+      oast: {
+        protocol: 'http',
+        remoteAddress: '203.0.113.7',
+        timestamp: '2026-10-22T09:16:42.59198473Z',
+      },
+    })
+  })
+
+  it('never stores the correlation id: masked in the url, absent from raw', () => {
+    const [f] = normalizeOne(oastLine)
+    expect(f!.url).toBe('http://127.0.0.1:8000/fetch?url=https://<oast-id>.oast.pro')
+    expect(JSON.stringify(f)).not.toContain(UID)
+    expect(JSON.stringify(f)).not.toContain('raw-request')
+  })
+
+  it('masks a full-id that differs from (and contains) the unique id', () => {
+    const fullId = `${UID}abc`
+    const [f] = normalizeOne({
+      ...oastLine,
+      'matched-at': `http://127.0.0.1:8000/fetch?url=https://127.0.0.1.${fullId}.oast.pro`,
+      interaction: { ...oastLine.interaction, 'full-id': fullId },
+    })
+    expect(f!.url).toBe('http://127.0.0.1:8000/fetch?url=https://127.0.0.1.<oast-id>.oast.pro')
+  })
+
+  it('leaves a match without an interaction exactly as before', () => {
+    const [f] = normalizeOne({ ...oastLine, interaction: undefined, 'matcher-name': 'word' })
+    expect(f!.evidence).toBe('word')
+    expect(f!.raw).not.toHaveProperty('oast')
+  })
+})

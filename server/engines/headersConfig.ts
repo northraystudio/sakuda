@@ -15,7 +15,12 @@ export type HeadersConfigKey = 'header' | 'headers'
  * nuclei 3.x, httpx 1.10/1.12 and katana 1.7.0 with an echo server.
  */
 export function headersConfigJson(headers: Header[], key: HeadersConfigKey): string {
-  return JSON.stringify({ [key]: headers.map((h) => `${h.name}: ${h.value}`) })
+  return JSON.stringify({ [key]: headerLines(headers) })
+}
+
+/** `Name: value` lines, the form every `-H` / `header` config key takes. */
+export function headerLines(headers: Header[]): string[] {
+  return headers.map((h) => `${h.name}: ${h.value}`)
 }
 
 /**

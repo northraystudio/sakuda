@@ -35,6 +35,7 @@ import {
   NUCLEI_PRIORITY_SIGNATURE_TAGS,
 } from './args'
 import { probeTargets, type HttpxProbeMeta } from './httpx'
+import { oastServerLabel, probeOastServer, withNucleiConfig, type OastStatus } from './oast'
 import {
   normalizeNucleiLines,
   parseNucleiJsonl,
@@ -89,18 +90,28 @@ function addCounts(into: SeverityCounts, from: SeverityCounts): void {
 
 /** The nuclei engine run: the site's headers are written once, 0600, and
  * shared by the httpx probe and every nuclei phase as `-config` — never on
- * argv (#95) — and removed when the run ends, however it ends. */
+ * argv (#95) — and removed when the run ends, however it ends. A
+ * self-hosted interactsh token gets a nuclei-only config of its own (#35),
+ * so httpx never reads it. */
 export const runNuclei: EngineRunner = (input) =>
   withHeadersConfig(
     join(input.workDir, 'headers.json'),
     input.site.headers,
     'header',
-    (headersConfigFile) => runNucleiPhases(input, headersConfigFile),
+    (headersConfigFile) =>
+      withNucleiConfig(
+        join(input.workDir, 'nuclei-config.json'),
+        input.site.headers,
+        input.env.nuclei.oast,
+        headersConfigFile,
+        (nucleiConfigFile) => runNucleiPhases(input, headersConfigFile, nucleiConfigFile),
+      ),
   )
 
 async function runNucleiPhases(
   { scanId, site, workDir, env, logger, signal }: EngineInput,
   headersConfigFile: string | null,
+  nucleiConfigFile: string | null,
 ): ReturnType<EngineRunner> {
   const limits = effectiveNucleiLimits(site, env.nuclei)
   const { targets, excluded } = expandNucleiTargets(site)
@@ -147,6 +158,8 @@ async function runNucleiPhases(
   const riskTags = effectiveRiskTags(site)
   const tags = [...nucleiTagsFor(site.headers.length > 0), ...riskExtraTags(riskTags)]
   const parameterizedUrlCount = countParameterizedUrls(getUrls)
+  const oast = env.nuclei.oast
+  const oastServer = oastServerLabel(oast)
   await mkdir(workDir, { recursive: true })
 
   logger.info(
@@ -162,6 +175,9 @@ async function runNucleiPhases(
       parameterizedUrlCount,
       rateLimit: site.nucleiRateLimit,
       headerNames: site.headerNames,
+      // Where out-of-band callbacks go (#35); the token is never logged.
+      oastMode: oast.mode,
+      oastServer,
     },
     'nuclei start',
   )
@@ -192,6 +208,29 @@ async function runNucleiPhases(
   let signaturePhase: GetPhaseStatus = 'skipped'
   let exposurePhase: GetPhaseStatus = 'skipped'
   let dastPhase: GetPhaseStatus = 'skipped'
+  // --- pre-flight: is the interactsh server reachable? (#35) ---------------
+  // nuclei reports a failed interactsh registration only at -v level, so an
+  // unreachable server would otherwise read as "no out-of-band findings".
+  // With OAST off nothing is sent, and nuclei runs with -ni.
+  let oastStatus: OastStatus = 'disabled'
+  if (oast.mode === 'off') {
+    warnings.push(
+      'OAST is off (SAKUDA_OAST=off): nuclei ran with -ni, so out-of-band templates (blind SSRF, OOB XXE/SSTI/command injection) were excluded and such findings cannot appear',
+    )
+  } else {
+    const probe = await probeOastServer(oast)
+    oastStatus = probe.reachable ? 'used' : 'unavailable'
+    if (!probe.reachable) {
+      warnings.push(
+        `OAST server unreachable (${oastServer}): ${probe.reason}. Out-of-band templates (blind SSRF etc.) could not receive callbacks, so no such finding is not evidence of safety — check outbound access from the sakuda container, or SAKUDA_OAST`,
+      )
+      logger.warn(
+        { scanId, engine: 'nuclei', oastMode: oast.mode, oastServer, reason: probe.reason },
+        'nuclei oast server unreachable',
+      )
+    }
+  }
+
   const unaliasFront = (u: string) =>
     restoreLoopbackHost(u, localAlias, new URL(site.frontBaseUrl).hostname)
 
@@ -291,7 +330,8 @@ async function runNucleiPhases(
       concurrency: limits.concurrency,
       tags,
       excludeTags: riskExcludeTags(riskTags),
-      headersConfigFile,
+      headersConfigFile: nucleiConfigFile,
+      oast,
     })
     const phase = await runNucleiPhase({
       label: `nuclei-dast:${scanId}`,
@@ -331,7 +371,8 @@ async function runNucleiPhases(
         rateLimit: site.nucleiRateLimit,
         concurrency: limits.concurrency,
         tags: NUCLEI_PRIORITY_SIGNATURE_TAGS,
-        headersConfigFile,
+        headersConfigFile: nucleiConfigFile,
+        oast,
         excludeTags: riskExcludeTags(riskTags),
       })
       const phase = await runNucleiPhase({
@@ -375,7 +416,8 @@ async function runNucleiPhases(
         rateLimit: site.nucleiRateLimit,
         concurrency: limits.concurrency,
         tags,
-        headersConfigFile,
+        headersConfigFile: nucleiConfigFile,
+        oast,
         excludeTags: fullSignatureExcludeTags(riskExcludeTags(riskTags)),
       })
       const phase = await runNucleiPhase({
@@ -428,7 +470,8 @@ async function runNucleiPhases(
         outputFile,
         rateLimit: site.nucleiRateLimit,
         concurrency: limits.concurrency,
-        headersConfigFile,
+        headersConfigFile: nucleiConfigFile,
+        oast,
       })
       const phase = await runNucleiPhase({
         label: `nuclei-openapi:${scanId}:${i}`,
@@ -520,6 +563,7 @@ async function runNucleiPhases(
       dastPhase,
       stats: getStats,
       ...(dastStats ? { dastStats } : {}),
+      oast: { mode: oast.mode, server: oastServer, status: oastStatus },
       timedOut,
     },
   }

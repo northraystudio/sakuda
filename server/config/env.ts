@@ -83,7 +83,42 @@ const allowedHosts = z.preprocess(
     .default([]),
 )
 
-const EnvSchema = z.object({
+/**
+ * Where nuclei's interactsh client registers for out-of-band callbacks
+ * (#35): `public` = nuclei's own default list of ProjectDiscovery servers
+ * (`oast.pro`, …), `off` = `-ni` (OAST templates excluded, nothing leaves
+ * the scan), or a self-hosted interactsh server.
+ */
+export type OastConfig =
+  | { mode: 'public' }
+  | { mode: 'off' }
+  | { mode: 'self-hosted'; serverUrl: string; token: string | undefined }
+
+const OAST_ERROR =
+  'must be public, off, or the http(s) URL of a self-hosted interactsh server (no credentials in the URL; use SAKUDA_OAST_TOKEN)'
+
+/** `public` (default, also when empty) | `off` | `http(s)://host[:port]`. A
+ * URL with userinfo is refused: it would end up on nuclei's argv. */
+const oastServer = z.preprocess(
+  (v) => (typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim()) : v),
+  z
+    .union(
+      [
+        z.enum(['public', 'off']),
+        // zod still runs a refinement after a failed `.url()` check, so guard
+        // the parse instead of letting `new URL` throw.
+        z.url({ protocol: /^https?$/ }).refine((u) => {
+          if (!URL.canParse(u)) return false
+          const parsed = new URL(u)
+          return parsed.username === '' && parsed.password === ''
+        }),
+      ],
+      { error: OAST_ERROR },
+    )
+    .default('public'),
+)
+
+const EnvObject = z.object({
   SAKUDA_ENCRYPTION_KEY: z
     .string({
       error: 'SAKUDA_ENCRYPTION_KEY is required (base64 of 32 random bytes; run `pnpm keygen`)',
@@ -103,6 +138,8 @@ const EnvSchema = z.object({
     .default('/opt/nuclei-templates/dast'),
   SAKUDA_NUCLEI_MAX_MINUTES: z.coerce.number().int().positive().default(60),
   SAKUDA_NUCLEI_CONCURRENCY: z.coerce.number().int().positive().default(25),
+  SAKUDA_OAST: oastServer,
+  SAKUDA_OAST_TOKEN: optionalString,
   SAKUDA_KATANA_BIN: z.string().default('katana'),
   SAKUDA_DALFOX_BIN: z.string().default('dalfox'),
   SAKUDA_DALFOX_MAX_MINUTES: z.coerce.number().int().positive().default(10),
@@ -134,6 +171,23 @@ const EnvSchema = z.object({
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 })
 
+const EnvSchema = EnvObject.superRefine((v, ctx) => {
+  // A token only means something to a self-hosted server; with public/off it
+  // would be silently unused, so say so at startup. The value is never echoed.
+  if (v.SAKUDA_OAST_TOKEN !== undefined && (v.SAKUDA_OAST === 'public' || v.SAKUDA_OAST === 'off'))
+    ctx.addIssue({
+      code: 'custom',
+      path: ['SAKUDA_OAST_TOKEN'],
+      message: `is set but SAKUDA_OAST=${v.SAKUDA_OAST}; a token applies only to a self-hosted interactsh server URL`,
+    })
+})
+
+function toOastConfig(server: string, token: string | undefined): OastConfig {
+  if (server === 'public') return { mode: 'public' }
+  if (server === 'off') return { mode: 'off' }
+  return { mode: 'self-hosted', serverUrl: server.replace(/\/+$/, ''), token }
+}
+
 export interface Env {
   encryptionKey: string
   dataDir: string
@@ -149,6 +203,8 @@ export interface Env {
     dastTemplatesDir: string
     maxMinutes: number
     concurrency: number
+    /** interactsh (OAST) for out-of-band templates such as blind SSRF (#35). */
+    oast: OastConfig
   }
   /** katana's time budget is the site's `zapFeSpiderMaxMinutes` — no env knob. */
   katana: { bin: string }
@@ -205,6 +261,7 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
       dastTemplatesDir: v.SAKUDA_NUCLEI_DAST_TEMPLATES,
       maxMinutes: v.SAKUDA_NUCLEI_MAX_MINUTES,
       concurrency: v.SAKUDA_NUCLEI_CONCURRENCY,
+      oast: toOastConfig(v.SAKUDA_OAST, v.SAKUDA_OAST_TOKEN),
     },
     katana: { bin: resolveExecutablePath(v.SAKUDA_KATANA_BIN) },
     dalfox: {
