@@ -170,6 +170,8 @@ docker run -d --name sakuda -p 127.0.0.1:3001:3000 --shm-size=1g \
 | `SAKUDA_NUCLEI_DAST_TEMPLATES`    | `/opt/nuclei-templates/dast`                                              | DAST（ファジング）テンプレート。「アクティブインジェクション検査」が有効なサイトでのみ読み込まれる。                                         |
 | `SAKUDA_NUCLEI_MAX_MINUTES`       | `60`                                                                      | nuclei 1 実行のハードタイムアウト。全フェーズ（DAST / signature / OpenAPI）で共有。                                                          |
 | `SAKUDA_NUCLEI_CONCURRENCY`       | `25`                                                                      | nuclei の並列度（`-c`）。遅い・壊れやすいターゲットでは下げると、遅い応答待ちで浪費する時間が減る。                                          |
+| `SAKUDA_OAST`                     | `public`                                                                  | nuclei の OAST（interactsh）コールバック先。`public` = 公開サーバ、`off` = 使わない（`-ni`）、または自前の URL。後述。                       |
+| `SAKUDA_OAST_TOKEN`               | _(未設定)_                                                                | 自前の `https://` interactsh サーバのトークン（`public`/`off`/`http://` ではエラー）。0600 のファイルで渡す。                                |
 | `SAKUDA_KATANA_BIN`               | `katana`（イメージ内は `/usr/local/bin/katana`）                          | katana バイナリのパス（ディスカバリの第 2 の URL ソース）。時間予算はサイトの spider 分数と同じで、個別の設定はない。                        |
 | `SAKUDA_DALFOX_BIN`               | `dalfox`（イメージ内は `/usr/local/bin/dalfox`）                          | dalfox バイナリのパス（反射型 / DOM XSS エンジン）。アクティブインジェクション検査が有効なときのみ実行。                                     |
 | `SAKUDA_DALFOX_MAX_MINUTES`       | `10`                                                                      | dalfox 1 実行の実時間予算。                                                                                                                  |
@@ -335,6 +337,25 @@ ZAP `postForm`）。オフの場合、これらは抑止されます。自分の
 トランスポート失敗、405 / 429 / 5xx は「不明」として残ります。httpx が無い・失敗
 する・`SAKUDA_HTTPX_MAX_MINUTES` に達した場合は、リスト全体が nuclei に渡され、
 スキャンに警告が付きます。
+
+**帯域外コールバック (OAST)。** 応答に何も返らない脆弱性 — blind SSRF、帯域外の
+XXE / SSTI / コマンドインジェクション — は、nuclei が一意の
+[interactsh](https://github.com/projectdiscovery/interactsh) URL を注入し、対象の
+サーバがそこへ接続してくるのを待つことで検出します。こうして出た finding は着弾
+そのものを証跡に持ち（`OAST http callback from <ip> at <time>`）、保存される URL では
+スキャンごとの相関 ID が `<oast-id>` に置き換わります。**既定（`SAKUDA_OAST=public`）
+では ProjectDiscovery の公開 interactsh サーバ（`oast.pro`、`oast.live` など）との
+通信が発生します**: 診断対象のサーバがそこへ接続し、nuclei がそこに登録して問い合わせ
+ます。これは nuclei 自身の既定動作で、エンジンの `meta.oast` に表示されます。
+`SAKUDA_OAST=off` にするとスキャン外へは何も送りません（nuclei は OAST 系テンプレートを
+すべて除外し、実行結果に警告が付きます）。自前の interactsh サーバも指定できます
+（`SAKUDA_OAST=https://oast.example.internal`、必要なら `SAKUDA_OAST_TOKEN`）。nuclei の
+開始前に sakuda がサーバへ GET を 1 回送り、どこからも応答がなければ、帯域外の検査が
+コールバックを受け取れなかったことを警告します（`meta.oast.status = unavailable`）。
+黙って「検出なし」にはなりません。この確認では、トークンが正しいかどうかも、
+_対象のサーバ_ がそこへ届くかどうかも分かりません。blind SSRF のテンプレートは、
+値がすでに URL かパスに見えるパラメータしか書き換えないので、そうしたターゲットは
+URL の値付きで保存してください（`/fetch?url=` ではなく `/fetch?url=https://example.com`）。
 
 **部分実行は正直に報告されます。** エンジンが制限時間に達した場合、クリーンに完了
 したようには見せず _stopped at limit_ とマークし、そこまでに見つけたものを保持します。

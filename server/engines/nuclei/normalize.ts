@@ -23,6 +23,18 @@ export const NucleiLineSchema = z.looseObject({
   request: z.string().optional(),
   response: z.string().optional(),
   timestamp: z.string().optional(),
+  /** Set when the match is an interactsh (OAST) callback (#35). Only
+   * protocol / remote-address / timestamp are ever persisted; the ids are
+   * read only to mask them, and raw-request/raw-response are dropped. */
+  interaction: z
+    .looseObject({
+      protocol: z.string().optional(),
+      'unique-id': z.string().optional(),
+      'full-id': z.string().optional(),
+      'remote-address': z.string().optional(),
+      timestamp: z.string().optional(),
+    })
+    .optional(),
 })
 export type NucleiLine = z.infer<typeof NucleiLineSchema>
 
@@ -114,7 +126,8 @@ export function normalizeNucleiLines(
     const level: SeverityLevel = isUnverifiedTimeBasedCmdi(l) ? 'low' : templateLevel
     counts[level]++
     if (!isReportedSeverity(level)) continue
-    const url = unalias(l['matched-at'] ?? l.host ?? '')
+    const oast = l.interaction
+    const url = maskOastIds(unalias(l['matched-at'] ?? l.host ?? ''), oast)
     const method = /^([A-Z]+) \S+ HTTP\//.exec(l.request ?? '')?.[1] ?? null
     const refs =
       l.info.reference == null
@@ -128,7 +141,9 @@ export function normalizeNucleiLines(
       url,
       method,
       param: null,
-      evidence: l['extracted-results']?.join(', ') ?? l['matcher-name'] ?? null,
+      evidence: oast
+        ? oastEvidence(oast)
+        : (l['extracted-results']?.join(', ') ?? l['matcher-name'] ?? null),
       description: l.info.description?.trim() ?? null,
       solution: null,
       reference: refs,
@@ -143,10 +158,38 @@ export function normalizeNucleiLines(
         tags: l.info.tags,
         matcherName: l['matcher-name'],
         timestamp: l.timestamp,
+        ...(oast
+          ? {
+              oast: {
+                protocol: oast.protocol,
+                remoteAddress: oast['remote-address'],
+                timestamp: oast.timestamp,
+              },
+            }
+          : {}),
       },
     })
   }
   return { findings, counts }
+}
+
+type OastInteraction = NonNullable<NucleiLine['interaction']>
+
+/** The callback is the proof for an OAST match: who reached the listener,
+ * over what, and when (#35). */
+function oastEvidence(i: OastInteraction): string {
+  return `OAST ${i.protocol ?? 'unknown'} callback from ${i['remote-address'] ?? 'unknown'} at ${i.timestamp ?? 'unknown'}`
+}
+
+/** The injected payload in `matched-at` carries the interactsh correlation
+ * id (`https://<id>.oast.pro`); it is never stored (#35). The full id is
+ * replaced first because it may contain the unique id. */
+function maskOastIds(url: string, i: OastInteraction | undefined): string {
+  if (!i) return url
+  let masked = url
+  for (const id of [i['full-id'], i['unique-id']])
+    if (id) masked = masked.replaceAll(id, '<oast-id>')
+  return masked
 }
 
 export interface SkippedHost {

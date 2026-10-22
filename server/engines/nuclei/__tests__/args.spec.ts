@@ -8,6 +8,9 @@ import {
   NUCLEI_PRIORITY_SIGNATURE_TAGS,
   nucleiTagsFor,
 } from '../args'
+import type { OastConfig } from '../../../config/env'
+
+const PUBLIC: OastConfig = { mode: 'public' }
 
 describe('fullSignatureExcludeTags (#3)', () => {
   it('adds the priority tags to the risk excludes so the two passes never overlap', () => {
@@ -49,6 +52,7 @@ describe('buildNucleiArgs', () => {
         concurrency: 25,
         tags: ['xss', 'sqli'],
         headersConfigFile: '/w/headers.json',
+        oast: PUBLIC,
       }),
     ).toEqual([
       '-l',
@@ -90,6 +94,7 @@ describe('buildNucleiArgs', () => {
         concurrency: 25,
         tags: ['xss'],
         headersConfigFile: null,
+        oast: PUBLIC,
         browserStorage: [],
       }),
     ).toContain('-omit-raw')
@@ -106,6 +111,7 @@ describe('buildNucleiDastArgs (the active GET DAST phase)', () => {
     tags: ['sqli', 'cmdi'],
     excludeTags: ['dos', 'intrusive'],
     headersConfigFile: '/w/headers.json',
+    oast: PUBLIC,
   }
 
   it('loads only the DAST tree with -dast and the same tag filters as the signature phase', () => {
@@ -158,6 +164,7 @@ describe('buildNucleiArgs is the signature phase in both modes', () => {
       tags: ['sqli', 'cmdi'],
       excludeTags: ['dos'],
       headersConfigFile: null,
+      oast: PUBLIC,
     })
     expect(args).not.toContain('-dast')
     expect(args.filter((a) => a === '-t')).toHaveLength(1)
@@ -176,6 +183,7 @@ describe('buildNucleiOpenapiArgs', () => {
     rateLimit: 50,
     concurrency: 25,
     headersConfigFile: '/w/headers.json',
+    oast: PUBLIC,
   }
 
   it('imports the OpenAPI doc, loads only the DAST tree, no tag filter, -omit-raw kept', () => {
@@ -211,6 +219,7 @@ describe('buildNucleiArgs excludeTags', () => {
     concurrency: 25,
     tags: ['sqli'],
     headersConfigFile: null,
+    oast: PUBLIC,
   }
   const excludeOf = (args: string[]) => args[args.indexOf('-exclude-tags') + 1]
 
@@ -241,6 +250,7 @@ describe('host-error guard (#82)', () => {
       concurrency: 25,
       tags: ['sqli'],
       headersConfigFile,
+      oast: PUBLIC,
     })
     const dast = buildNucleiDastArgs({
       targetsFile: 't.txt',
@@ -251,6 +261,7 @@ describe('host-error guard (#82)', () => {
       tags: ['sqli'],
       excludeTags: ['dos'],
       headersConfigFile,
+      oast: PUBLIC,
     })
     const openapi = buildNucleiOpenapiArgs({
       openapiFile: '/w/openapi-0.json',
@@ -259,6 +270,7 @@ describe('host-error guard (#82)', () => {
       rateLimit: 50,
       concurrency: 25,
       headersConfigFile,
+      oast: PUBLIC,
     })
     for (const args of [signature, dast, openapi]) {
       expect(args).toContain('-no-mhe')
@@ -280,6 +292,7 @@ describe('headers never on argv (#95)', () => {
         rateLimit: 1,
         concurrency: 1,
         tags: [],
+        oast: PUBLIC,
         ...h,
       })
     const dast = (h: typeof withFile) =>
@@ -291,6 +304,7 @@ describe('headers never on argv (#95)', () => {
         concurrency: 1,
         tags: [],
         excludeTags: [],
+        oast: PUBLIC,
         ...h,
       })
     const openapi = (h: typeof withFile) =>
@@ -300,6 +314,7 @@ describe('headers never on argv (#95)', () => {
         outputFile: 'o',
         rateLimit: 1,
         concurrency: 1,
+        oast: PUBLIC,
         ...h,
       })
     for (const build of [signature, dast, openapi]) {
@@ -307,6 +322,64 @@ describe('headers never on argv (#95)', () => {
       expect(build(withFile)).not.toContain('-H')
       expect(build(without)).not.toContain('-config')
       expect(build(without)).not.toContain('-H')
+    }
+  })
+})
+
+describe('OAST setting reaches every phase (#35)', () => {
+  const build = (oast: OastConfig) => [
+    buildNucleiArgs({
+      targetsFile: 't',
+      templatesDir: '/tpl',
+      outputFile: 'o',
+      rateLimit: 1,
+      concurrency: 1,
+      tags: [],
+      headersConfigFile: null,
+      oast,
+    }),
+    buildNucleiDastArgs({
+      targetsFile: 't',
+      dastTemplatesDir: '/d',
+      outputFile: 'o',
+      rateLimit: 1,
+      concurrency: 1,
+      tags: [],
+      excludeTags: [],
+      headersConfigFile: null,
+      oast,
+    }),
+    buildNucleiOpenapiArgs({
+      openapiFile: 'oa',
+      dastTemplatesDir: '/d',
+      outputFile: 'o',
+      rateLimit: 1,
+      concurrency: 1,
+      headersConfigFile: null,
+      oast,
+    }),
+  ]
+
+  it('off: every phase passes -ni, so no interactsh traffic leaves the scan', () => {
+    for (const args of build({ mode: 'off' })) expect(args).toContain('-ni')
+  })
+
+  it('self-hosted: every phase passes -iserver, and the token is never on argv', () => {
+    for (const args of build({
+      mode: 'self-hosted',
+      serverUrl: 'https://oast.example.test',
+      token: 'tok-secret',
+    })) {
+      expect(args.slice(-2)).toEqual(['-iserver', 'https://oast.example.test'])
+      expect(args.join(' ')).not.toContain('tok-secret')
+      expect(args).not.toContain('-itoken')
+    }
+  })
+
+  it('public: no interactsh flag at all (nuclei default servers)', () => {
+    for (const args of build({ mode: 'public' })) {
+      expect(args).not.toContain('-ni')
+      expect(args).not.toContain('-iserver')
     }
   })
 })

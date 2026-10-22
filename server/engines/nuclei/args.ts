@@ -1,4 +1,6 @@
+import type { OastConfig } from '../../config/env'
 import { headersConfigArgs } from '../headersConfig'
+import { oastArgs } from './oast'
 
 export interface NucleiArgsInput {
   targetsFile: string
@@ -10,6 +12,8 @@ export interface NucleiArgsInput {
   /** Path of the 0600 headers config (`engines/headersConfig`), or null
    * when the site has no headers — the values never go on argv (#95). */
   headersConfigFile: string | null
+  /** interactsh setting (#35): `-ni` when off, `-iserver` when self-hosted. */
+  oast: OastConfig
   /** `-exclude-tags` value; defaults to all three risk tags. The caller
    * passes a shorter list only when a site opted a risk group back in
    * (see `domain/activeScan` `riskExcludeTags`). */
@@ -89,6 +93,7 @@ export function buildNucleiArgs(i: NucleiArgsInput): string[] {
     '-nc',
     '-omit-raw',
     ...headersConfigArgs(i.headersConfigFile),
+    ...oastArgs(i.oast),
   ]
 }
 
@@ -106,6 +111,8 @@ export interface NucleiDastArgsInput {
   /** Path of the 0600 headers config (`engines/headersConfig`), or null
    * when the site has no headers — the values never go on argv (#95). */
   headersConfigFile: string | null
+  /** interactsh setting (#35): `-ni` when off, `-iserver` when self-hosted. */
+  oast: OastConfig
 }
 
 /**
@@ -143,6 +150,7 @@ export function buildNucleiDastArgs(i: NucleiDastArgsInput): string[] {
     '-nc',
     '-omit-raw',
     ...headersConfigArgs(i.headersConfigFile),
+    ...oastArgs(i.oast),
   ]
 }
 
@@ -158,6 +166,8 @@ export interface NucleiOpenapiArgsInput {
   /** Path of the 0600 headers config (`engines/headersConfig`), or null
    * when the site has no headers — the values never go on argv (#95). */
   headersConfigFile: string | null
+  /** interactsh setting (#35): `-ni` when off, `-iserver` when self-hosted. */
+  oast: OastConfig
 }
 
 /**
@@ -193,5 +203,6 @@ export function buildNucleiOpenapiArgs(i: NucleiOpenapiArgsInput): string[] {
     '-nc',
     '-omit-raw',
     ...headersConfigArgs(i.headersConfigFile),
+    ...oastArgs(i.oast),
   ]
 }

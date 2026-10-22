@@ -181,3 +181,69 @@ describe('SAKUDA_NUCLEI_DAST_TEMPLATES', () => {
     expect(warnings[0]).toContain('/mcp stays loopback-only')
   })
 })
+
+describe('SAKUDA_OAST / SAKUDA_OAST_TOKEN (#35)', () => {
+  const oastOf = (raw: Record<string, string>) =>
+    parseEnv({ SAKUDA_ENCRYPTION_KEY: key, ...raw }).nuclei.oast
+
+  it('defaults to the public interactsh servers (nuclei’s own default), also when empty', () => {
+    expect(oastOf({})).toEqual({ mode: 'public' })
+    expect(oastOf({ SAKUDA_OAST: '  ' })).toEqual({ mode: 'public' })
+    expect(oastOf({ SAKUDA_OAST: 'public' })).toEqual({ mode: 'public' })
+  })
+
+  it('off disables OAST', () => {
+    expect(oastOf({ SAKUDA_OAST: 'off' })).toEqual({ mode: 'off' })
+  })
+
+  it('an http(s) URL selects a self-hosted server, with an optional token', () => {
+    expect(oastOf({ SAKUDA_OAST: 'https://oast.example.test/' })).toEqual({
+      mode: 'self-hosted',
+      serverUrl: 'https://oast.example.test',
+      token: undefined,
+    })
+    expect(oastOf({ SAKUDA_OAST: 'http://10.0.0.5:8080' })).toEqual({
+      mode: 'self-hosted',
+      serverUrl: 'http://10.0.0.5:8080',
+      token: undefined,
+    })
+    expect(oastOf({ SAKUDA_OAST: 'https://10.0.0.5:8443', SAKUDA_OAST_TOKEN: 'tok-123' })).toEqual({
+      mode: 'self-hosted',
+      serverUrl: 'https://10.0.0.5:8443',
+      token: 'tok-123',
+    })
+  })
+
+  it('rejects a token with an http:// server (nuclei would send it in cleartext)', () => {
+    expect(() =>
+      oastOf({ SAKUDA_OAST: 'http://10.0.0.5:8080', SAKUDA_OAST_TOKEN: 'tok-123' }),
+    ).toThrow(/SAKUDA_OAST_TOKEN.*https/)
+  })
+
+  it.each([
+    'on',
+    'ftp://oast.example.test',
+    'oast.example.test',
+    'https://user:pw@oast.example.test',
+    'https://oast.example.test/path',
+    'https://oast.example.test/?token=abc',
+    'https://oast.example.test/#frag',
+  ])('rejects SAKUDA_OAST=%s at startup', (value) => {
+    expect(() => oastOf({ SAKUDA_OAST: value })).toThrow(/SAKUDA_OAST/)
+  })
+
+  it.each(['public', 'off'])(
+    'rejects a token when SAKUDA_OAST=%s (it would silently go unused)',
+    (mode) => {
+      expect(() => oastOf({ SAKUDA_OAST: mode, SAKUDA_OAST_TOKEN: 'tok-123' })).toThrow(
+        /SAKUDA_OAST_TOKEN/,
+      )
+    },
+  )
+
+  it('never echoes the token in the startup error', () => {
+    expect(() => oastOf({ SAKUDA_OAST: 'off', SAKUDA_OAST_TOKEN: 'tok-secret-xyz' })).toThrow(
+      expect.not.objectContaining({ message: expect.stringContaining('tok-secret-xyz') }),
+    )
+  })
+})

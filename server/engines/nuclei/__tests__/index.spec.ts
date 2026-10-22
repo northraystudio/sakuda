@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pino from 'pino'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseEnv, type Env } from '../../../config/env'
 import type { SiteWithHeaders } from '../../../services/siteService'
 import { EngineError } from '../../types'
@@ -48,6 +48,18 @@ function writeFakeBin(dir: string, name: string, content: string): string {
 }
 
 const key = randomBytes(32).toString('base64')
+
+// The OAST pre-flight (#35) is a real fetch to the interactsh servers; no
+// unit test may reach the network. Every test gets an answering stub; the
+// #35 tests below swap in their own.
+let oastFetch: ReturnType<typeof vi.fn>
+beforeEach(() => {
+  oastFetch = vi.fn(async () => new Response('', { status: 404 }))
+  vi.stubGlobal('fetch', oastFetch)
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 // The probe ahead of nuclei (#91) must not spawn a real httpx from PATH in a
 // unit test. Every run here gets this fake, which reports 200 for each input
@@ -911,5 +923,112 @@ describe('runNuclei httpx liveness probe (#91)', () => {
       parts: [expect.objectContaining({ minutes: 2 }), expect.objectContaining({ minutes: 60 })],
       totalMinutes: 62,
     })
+  })
+})
+
+describe('runNuclei OAST / interactsh (#35)', () => {
+  let tmp: string
+  const logger = pino({ level: 'silent' })
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'sakuda-nuclei-oast-'))
+  })
+
+  async function run(extraEnv: Record<string, string>, site = activeSite()) {
+    const fakeBin = writeFakeBin(tmp, 'fake-nuclei.js', FAKE_RECORD_ARGS)
+    const httpxBin = writeFakeBin(tmp, 'fake-httpx.js', FAKE_HTTPX)
+    const env: Env = parseEnv({
+      SAKUDA_ENCRYPTION_KEY: key,
+      SAKUDA_NUCLEI_BIN: fakeBin,
+      SAKUDA_HTTPX_BIN: httpxBin,
+      SAKUDA_DATA_DIR: tmp,
+      ...extraEnv,
+    })
+    const workDir = join(tmp, 'work')
+    const out = await runNuclei({
+      scanId: 'scan-oast',
+      engine: 'nuclei',
+      site,
+      workDir,
+      env,
+      logger,
+      signal: new AbortController().signal,
+    })
+    // as: written by the fake nuclei as JSON string[]
+    const argvOf = (output: string) =>
+      JSON.parse(readFileSync(join(workDir, `argv-${output}.json`), 'utf8')) as string[]
+    const seenConfig = (output: string): unknown => {
+      const p = join(workDir, `seen-headers-${output}.json`)
+      return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null
+    }
+    return { out, workDir, argvOf, seenConfig }
+  }
+
+  const activeSite = () =>
+    baseSite({
+      allowMutatingRequests: true,
+      nucleiPaths: '/fetch?url=https://example.com',
+      headers: [{ name: 'Cookie', value: 'token=secret' }],
+    })
+  const PHASES = ['dast-findings.jsonl', 'exposure-findings.jsonl', 'findings.jsonl']
+
+  it('public (default): probes the interactsh servers, adds no flag, and says where callbacks go', async () => {
+    const { out, argvOf } = await run({})
+    expect(oastFetch).toHaveBeenCalled()
+    for (const phase of PHASES) {
+      expect(argvOf(phase), phase).not.toContain('-ni')
+      expect(argvOf(phase), phase).not.toContain('-iserver')
+    }
+    expect(out.meta.oast).toEqual({
+      mode: 'public',
+      server: 'oast.pro,oast.live,oast.site,oast.online,oast.fun,oast.me',
+      status: 'used',
+    })
+    expect(out.warnings.join('\n')).not.toMatch(/OAST/)
+  })
+
+  it('off: sends nothing, passes -ni to every phase, and warns that OOB findings cannot appear', async () => {
+    const { out, argvOf } = await run({ SAKUDA_OAST: 'off' })
+    expect(oastFetch).not.toHaveBeenCalled()
+    for (const phase of PHASES) expect(argvOf(phase), phase).toContain('-ni')
+    expect(out.meta.oast).toEqual({ mode: 'off', server: null, status: 'disabled' })
+    expect(out.warnings.some((w) => w.includes('OAST is off') && w.includes('blind SSRF'))).toBe(
+      true,
+    )
+  })
+
+  it('unreachable server: the scan still runs, with a warning and status unavailable', async () => {
+    oastFetch.mockRejectedValue(new TypeError('fetch failed', { cause: new Error('ECONNREFUSED') }))
+    const { out } = await run({ SAKUDA_OAST: 'http://10.255.255.1:9' })
+    expect(out.meta.oast).toMatchObject({ mode: 'self-hosted', status: 'unavailable' })
+    const w = out.warnings.find((x) => x.startsWith('OAST server unreachable'))
+    expect(w).toContain('http://10.255.255.1:9')
+    expect(w).toContain('ECONNREFUSED')
+    expect(out.exitCode).toBe(0)
+  })
+
+  it('self-hosted token: only nuclei reads it, from a 0600 config removed after the run; never argv or meta', async () => {
+    const { out, workDir, argvOf, seenConfig } = await run({
+      SAKUDA_OAST: 'https://oast.example.test',
+      SAKUDA_OAST_TOKEN: 'tok-secret-xyz',
+    })
+    const nucleiConfig = join(workDir, 'nuclei-config.json')
+    for (const phase of PHASES) {
+      const argv = argvOf(phase)
+      expect(argv, phase).toEqual(expect.arrayContaining(['-iserver', 'https://oast.example.test']))
+      expect(argv[argv.indexOf('-config') + 1], phase).toBe(nucleiConfig)
+      expect(JSON.stringify(argv), phase).not.toContain('tok-secret-xyz')
+      expect(seenConfig(phase), phase).toEqual({
+        header: ['Cookie: token=secret'],
+        'interactsh-token': 'tok-secret-xyz',
+      })
+    }
+    // httpx keeps the shared headers file, which never holds the token
+    expect(JSON.parse(readFileSync(join(workDir, 'httpx', 'seen-headers.json'), 'utf8'))).toEqual({
+      header: ['Cookie: token=secret'],
+    })
+    expect(existsSync(nucleiConfig)).toBe(false)
+    expect(JSON.stringify(out.meta)).not.toContain('tok-secret-xyz')
+    expect(JSON.stringify(out.warnings)).not.toContain('tok-secret-xyz')
   })
 })
