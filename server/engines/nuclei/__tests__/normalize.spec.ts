@@ -5,6 +5,7 @@ import {
   parseNucleiJsonl,
   parseNucleiStats,
   parseSkippedHosts,
+  redactOastJsonl,
 } from '../normalize'
 
 const highLine = JSON.stringify({
@@ -290,5 +291,60 @@ describe('OAST callback evidence (#35)', () => {
     const [f] = normalizeOne({ ...oastLine, interaction: undefined, 'matcher-name': 'word' })
     expect(f!.evidence).toBe('word')
     expect(f!.raw).not.toHaveProperty('oast')
+  })
+})
+
+describe('redactOastJsonl (#43)', () => {
+  const ID = 'd3kq0r1c0abcdefghijklmnopqrstuvwx'
+  const oast = JSON.stringify({
+    'template-id': 'blind-ssrf',
+    info: { name: 'Blind SSRF OAST Detection', severity: 'medium' },
+    'matched-at': `http://127.0.0.1:8000/fetch?url=https://${ID}.oast.pro`,
+    interaction: {
+      protocol: 'dns',
+      'unique-id': ID,
+      'full-id': `127.0.0.1.${ID}`,
+      'remote-address': '203.0.113.7',
+      timestamp: '2026-10-22T09:16:42Z',
+      'raw-request': `;; QUESTION\n127.0.0.1.${ID}.oast.pro. IN A`,
+      'raw-response': ';; ANSWER',
+    },
+  })
+
+  it('removes raw-request/raw-response and masks the ids anywhere on the line', () => {
+    const { text, changed } = redactOastJsonl(`${oast}\n`)
+    expect(changed).toBe(true)
+    expect(text).not.toContain(ID)
+    expect(text).not.toContain('raw-request')
+    expect(text).not.toContain('raw-response')
+    expect(text.endsWith('\n')).toBe(true)
+    const [line] = parseNucleiJsonl(text).lines
+    expect(line!['matched-at']).toBe('http://127.0.0.1:8000/fetch?url=https://<oast-id>.oast.pro')
+    expect(line!.interaction).toEqual({
+      protocol: 'dns',
+      'unique-id': '<oast-id>',
+      'full-id': '<oast-id>',
+      'remote-address': '203.0.113.7',
+      timestamp: '2026-10-22T09:16:42Z',
+    })
+  })
+
+  it('keeps lines without an interaction, and unparsable lines, byte for byte', () => {
+    const input = `${highLine}\n${garbageLine}\n${oast}\n{"interaction": broken\n`
+    const { text } = redactOastJsonl(input)
+    const out = text.split('\n')
+    expect(out[0]).toBe(highLine)
+    expect(out[1]).toBe(garbageLine)
+    expect(out[3]).toBe('{"interaction": broken')
+  })
+
+  it('reports no change when there is nothing to redact', () => {
+    const input = `${highLine}\n${infoLine}\n`
+    expect(redactOastJsonl(input)).toEqual({ text: input, changed: false })
+  })
+
+  it('reports no change for an interaction line that is already redacted', () => {
+    const once = redactOastJsonl(`${oast}\n`).text
+    expect(redactOastJsonl(once)).toEqual({ text: once, changed: false })
   })
 })

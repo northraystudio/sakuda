@@ -261,7 +261,10 @@ Juice Shop が `docker-compose.yml` に入っていたチェックアウトか�
 の plan / report JSON、nuclei の JSONL 出力、httpx プローブの JSONL と argv は
 `nuclei/httpx/` 配下）が保存されます。サイトのリクエストヘッダは、実行中に限り
 エンジンのファイルの隣に書かれる `headers.json`（0600、終了後に削除）を通じて
-nuclei・katana・httpx に渡され、コマンドラインには決して載りません。ここには
+nuclei・katana・httpx に渡され、コマンドラインには決して載りません。OAST の一致行
+では、nuclei の JSONL にコールバックのプロトコル・送信元アドレス・時刻は残しますが、
+interactsh の相関 ID は `<oast-id>` に置き換え、コールバックの生リクエスト／生レス
+ポンスは取り除きます。ここには
 ターゲットアプリのデータ（レスポンス断片、発見されたパス）が含まれうるため、
 `data/` ディレクトリは機密として扱い、コミットしたり、スキャン対象を所有する
 チームの外に共有したりしないでください。

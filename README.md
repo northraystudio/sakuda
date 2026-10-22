@@ -262,7 +262,10 @@ remove the old container once with `docker rm -f sakuda-juice-shop`, then
 probe's JSONL and argv under `nuclei/httpx/`). The site's request headers
 reach nuclei, katana and httpx through a `headers.json` written next to the
 engine's files for the duration of the run only (0600, removed afterwards),
-never on the command line. This can
+never on the command line. On OAST matches, nuclei's JSONL keeps the
+callback's protocol, source address and time, but the interactsh
+correlation ids are masked as `<oast-id>` and the raw callback
+request/response are removed. This can
 contain target application data (response fragments, discovered paths) —
 treat the `data/` directory as sensitive, do not commit it or share it
 outside the team that owns the scanned target.
