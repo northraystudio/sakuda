@@ -222,7 +222,7 @@ async function runNucleiPhases(
     oastStatus = probe.reachable ? 'used' : 'unavailable'
     if (!probe.reachable) {
       warnings.push(
-        `OAST server unreachable (${oastServer}): ${probe.reason}. Out-of-band templates (blind SSRF etc.) could not receive callbacks, so no such finding is not evidence of safety — check outbound access from the sakuda container, or SAKUDA_OAST`,
+        `OAST server unreachable (${oastServer}): ${probe.reason}. Out-of-band templates (blind SSRF etc.) could not receive callbacks, so the absence of such findings is not evidence of safety — check outbound access from the sakuda container, or SAKUDA_OAST`,
       )
       logger.warn(
         { scanId, engine: 'nuclei', oastMode: oast.mode, oastServer, reason: probe.reason },

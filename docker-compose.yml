@@ -21,6 +21,9 @@ services:
       SAKUDA_NUCLEI_CONCURRENCY: ${SAKUDA_NUCLEI_CONCURRENCY:-25}
       SAKUDA_HTTPX_MAX_MINUTES: ${SAKUDA_HTTPX_MAX_MINUTES:-5}
       SAKUDA_HTTPX_PRUNE_STATUS_CODES: ${SAKUDA_HTTPX_PRUNE_STATUS_CODES:-}
+      # Out-of-band (interactsh) callbacks: public | off | self-hosted URL (#35).
+      SAKUDA_OAST: ${SAKUDA_OAST:-public}
+      SAKUDA_OAST_TOKEN: ${SAKUDA_OAST_TOKEN:-}
       SAKUDA_ENGINE_GRACE_MINUTES: ${SAKUDA_ENGINE_GRACE_MINUTES:-10}
       SAKUDA_ZAP_MAX_HEAP: ${SAKUDA_ZAP_MAX_HEAP:-1024m}
       # Host Chrome started by `make capture-browser` (#17).
