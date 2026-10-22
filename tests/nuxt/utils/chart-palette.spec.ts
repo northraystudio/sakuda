@@ -45,6 +45,7 @@ describe('resolveChartPalette', () => {
         'zap-api': 'rgb(10, 114, 129)',
         'zap-fe': 'rgb(158, 158, 160)',
         dalfox: 'rgb(237, 26, 160)',
+        boundary: 'rgb(0, 125, 72)',
       },
       diff: {
         new: 'rgb(211, 0, 5)',
@@ -68,6 +69,7 @@ describe('resolveChartPalette', () => {
         'zap-api': '#0a7281',
         'zap-fe': '#9e9ea0',
         dalfox: '#ed1aa0',
+        boundary: '#007d48',
       },
       diff: {
         new: '#d30005',

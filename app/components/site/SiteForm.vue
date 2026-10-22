@@ -49,6 +49,7 @@ const ENGINE_BADGE = {
   zapFe: 'ZAP frontend',
   zapApi: 'ZAP API',
   dalfox: 'Dalfox',
+  boundary: 'Boundary',
 } as const
 
 const form = reactive({
@@ -458,7 +459,8 @@ function handleSubmit() {
         <strong>1 Site</strong> → <strong>2 Authentication</strong> →
         <strong>3 Active checks</strong> → <strong>4 Crawl</strong> → <strong>5 Targets</strong> →
         <strong>6 Engines</strong>. Each engine then derives its own targets from step 5 (shown on
-        the site page). <strong>Dalfox</strong> has no settings of its own; it needs active checks.
+        the site page). <strong>Dalfox</strong> and <strong>Boundary</strong> have no settings of
+        their own; they need active checks.
       </p>
     </div>
 
@@ -769,6 +771,7 @@ function handleSubmit() {
         <span data-testid="engine-badge" class="badge">{{ ENGINE_BADGE.zapFe }}</span>
         <span data-testid="engine-badge" class="badge">{{ ENGINE_BADGE.zapApi }}</span>
         <span data-testid="engine-badge" class="badge">{{ ENGINE_BADGE.dalfox }}</span>
+        <span data-testid="engine-badge" class="badge">{{ ENGINE_BADGE.boundary }}</span>
       </legend>
       <p class="text-caption-sm text-mute" data-testid="section-note">
         Decide before discovering: it changes what the crawl does (form submission) and which saved
@@ -947,12 +950,13 @@ function handleSubmit() {
           <p class="text-caption-sm text-mute">
             The one saved list every engine reads — Nuclei scans it, the ZAP frontend requests it
             before its spiders run (and DOM-probes hash routes), ZAP API builds a request document
-            from its non-GET lines, dalfox tests its GET lines. One path per line, relative to the
-            front base URL; prefix "api:" only for paths on the API base URL. Once the site exists,
-            "Discover URLs" on its Edit page fills this list from ZAP's spiders and katana; or
-            hand-list the pages and endpoints you care about (top page, login, API routes with query
-            params). A line may start with an HTTP method, e.g. "POST /api/x" — method omitted means
-            GET; non-GET lines are replayed only under active checks. "#" starts a comment.
+            from its non-GET lines, dalfox tests its GET lines, boundary sends bodies to its
+            POST/PUT/PATCH lines. One path per line, relative to the front base URL; prefix "api:"
+            only for paths on the API base URL. Once the site exists, "Discover URLs" on its Edit
+            page fills this list from ZAP's spiders and katana; or hand-list the pages and endpoints
+            you care about (top page, login, API routes with query params). A line may start with an
+            HTTP method, e.g. "POST /api/x" — method omitted means GET; non-GET lines are replayed
+            only under active checks. "#" starts a comment.
           </p>
         </div>
       </slot>

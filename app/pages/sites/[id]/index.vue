@@ -35,6 +35,7 @@ const nucleiChecked = ref(true)
 const zapApiChecked = ref(false)
 const zapFeChecked = ref(true)
 const dalfoxChecked = ref(false)
+const boundaryChecked = ref(false)
 
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -77,10 +78,17 @@ function engineNote(engine: Engine, view: EngineTargets): string {
       return view.available
         ? 'GET lines the server can reach; hash routes belong to the DOM probe.'
         : 'Runs only under active checks.'
+    case 'boundary':
+      return view.available
+        ? 'POST/PUT/PATCH lines that have a captured body shape, plus the JSON-body operations of a pasted OpenAPI document. Creates or changes records on the target.'
+        : 'Runs only under active checks.'
   }
 }
 // dalfox sends attack payloads, so it can run only under active injection checks.
 const dalfoxAvailable = computed(() => !!site.value && isActiveScanEnabled(site.value))
+// boundary writes to the target, so like dalfox it needs active checks, and it
+// is opt-in per scan (unchecked by default).
+const boundaryAvailable = computed(() => !!site.value && isActiveScanEnabled(site.value))
 const zapApiAvailable = computed(
   () => !!site.value && (!!site.value.openapiUrl || !!site.value.openapiJson),
 )
@@ -88,7 +96,11 @@ const zapApiAvailable = computed(
 const canStartScan = computed(
   () =>
     !submitting.value &&
-    (nucleiChecked.value || zapApiChecked.value || zapFeChecked.value || dalfoxChecked.value),
+    (nucleiChecked.value ||
+      zapApiChecked.value ||
+      zapFeChecked.value ||
+      dalfoxChecked.value ||
+      boundaryChecked.value),
 )
 
 function selectedEngines(): Engine[] {
@@ -97,6 +109,7 @@ function selectedEngines(): Engine[] {
   if (zapApiChecked.value) engines.push('zap-api')
   if (zapFeChecked.value) engines.push('zap-fe')
   if (dalfoxChecked.value) engines.push('dalfox')
+  if (boundaryChecked.value) engines.push('boundary')
   return engines
 }
 
@@ -297,6 +310,25 @@ async function handleStartScan() {
             </label>
             <p v-if="!dalfoxAvailable" class="text-caption-sm text-mute mt-1">
               Turn on "Active injection checks" in Edit to enable this XSS engine.
+            </p>
+          </div>
+
+          <div>
+            <label class="text-body-md text-ink flex items-center gap-2">
+              <input
+                v-model="boundaryChecked"
+                data-testid="engine-boundary"
+                type="checkbox"
+                :disabled="!boundaryAvailable"
+              />
+              {{ ENGINE_LABELS.boundary }}
+            </label>
+            <p v-if="!boundaryAvailable" class="text-caption-sm text-mute mt-1">
+              Turn on "Active injection checks" in Edit to enable this input-validation engine.
+            </p>
+            <p v-else class="text-caption-sm text-mute mt-1">
+              Sends out-of-range, wrong-type and empty values to write endpoints and creates or
+              changes records on the target — use a test environment.
             </p>
           </div>
         </div>

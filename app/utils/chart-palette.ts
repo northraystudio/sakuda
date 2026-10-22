@@ -35,7 +35,13 @@ export function resolveChartPalette(): ChartPalette {
     grid: token('--color-hairline-soft', FALLBACKS.hairlineSoft),
     text: token('--color-mute', FALLBACKS.mute),
     severity: { critical: saleDeep, high: sale, medium: info },
-    engines: { nuclei: ink, 'zap-api': accentTeal, 'zap-fe': stone, dalfox: accentPink },
+    engines: {
+      nuclei: ink,
+      'zap-api': accentTeal,
+      'zap-fe': stone,
+      dalfox: accentPink,
+      boundary: success,
+    },
     diff: { new: sale, persisting: stone, resolved: success },
   }
 }

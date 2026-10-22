@@ -140,8 +140,10 @@ async function readEngineProgress(engine: Engine, workDir: string): Promise<Engi
       const tail = await readTail(join(workDir, 'stdout.log'))
       return { ...unknown, stage: tail ? parseZapStage(tail) : null }
     }
-    // dalfox runs silenced (engines/dalfox) and prints no progress.
+    // dalfox runs silenced (engines/dalfox) and prints no progress; boundary
+    // runs in-process and writes none.
     case 'dalfox':
+    case 'boundary':
       return unknown
     default: {
       const exhaustive: never = engine
