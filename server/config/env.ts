@@ -180,6 +180,15 @@ const EnvSchema = EnvObject.superRefine((v, ctx) => {
       path: ['SAKUDA_OAST_TOKEN'],
       message: `is set but SAKUDA_OAST=${v.SAKUDA_OAST}; a token applies only to a self-hosted interactsh server URL`,
     })
+  // nuclei sends the token on every register/poll; over http:// it would
+  // cross the network in cleartext.
+  else if (v.SAKUDA_OAST_TOKEN !== undefined && v.SAKUDA_OAST.startsWith('http://'))
+    ctx.addIssue({
+      code: 'custom',
+      path: ['SAKUDA_OAST_TOKEN'],
+      message:
+        'requires an https:// SAKUDA_OAST server URL; over http:// it would be sent in cleartext',
+    })
 })
 
 function toOastConfig(server: string, token: string | undefined): OastConfig {

@@ -202,11 +202,22 @@ describe('SAKUDA_OAST / SAKUDA_OAST_TOKEN (#35)', () => {
       serverUrl: 'https://oast.example.test',
       token: undefined,
     })
-    expect(oastOf({ SAKUDA_OAST: 'http://10.0.0.5:8080', SAKUDA_OAST_TOKEN: 'tok-123' })).toEqual({
+    expect(oastOf({ SAKUDA_OAST: 'http://10.0.0.5:8080' })).toEqual({
       mode: 'self-hosted',
       serverUrl: 'http://10.0.0.5:8080',
+      token: undefined,
+    })
+    expect(oastOf({ SAKUDA_OAST: 'https://10.0.0.5:8443', SAKUDA_OAST_TOKEN: 'tok-123' })).toEqual({
+      mode: 'self-hosted',
+      serverUrl: 'https://10.0.0.5:8443',
       token: 'tok-123',
     })
+  })
+
+  it('rejects a token with an http:// server (nuclei would send it in cleartext)', () => {
+    expect(() =>
+      oastOf({ SAKUDA_OAST: 'http://10.0.0.5:8080', SAKUDA_OAST_TOKEN: 'tok-123' }),
+    ).toThrow(/SAKUDA_OAST_TOKEN.*https/)
   })
 
   it.each([
