@@ -8,12 +8,12 @@ English | [日本語](coverage-and-limits.ja.md)
 
 ## Purpose of this document
 
-Some vulnerabilities can be found efficiently by automated tools; others **cannot, in principle,** be found automatically and need human judgment. Running only an automated scan without knowing where that line lies invites the misreading that **"no findings" means "secure"**.
+Some vulnerabilities can be found efficiently by automated tools; others are hard for an automated tool to judge **because it lacks the context of the specification and the business**, and need the judgment of a person (or a well-designed, AI-based penetration test). Running only an **outside-in automated scan** without knowing where that line lies invites the misreading that **"no findings" means "secure"**.
 
 Using the open-source automated DAST (dynamic application security testing) tool **sakuda** as the example, this document lays out:
 
 1. what sakuda covers automatically,
-2. what automated scanning **in principle** cannot reach, and why,
+2. what outside-in automated scanning **struggles with**, and why (this does not mean "unreachable by any means"),
 3. how to fill that gap,
 
 without disclosing concrete attack procedures. The analysis uses **OWASP Juice Shop**, the widely used training application for security testing (a benchmark with many intentionally planted vulnerabilities), and each area below was confirmed to be exploitable there.
@@ -22,12 +22,12 @@ without disclosing concrete attack procedures. The analysis uses **OWASP Juice S
 
 ## Key points (a 3-minute read)
 
-| Question                                  | Answer                                                                                                                                                                                                                                                                                  |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Is sakuda alone enough for an assessment? | **No.** It efficiently finds injection, redirects, and misconfiguration / information exposure, but flaws involving authorization, business logic, authentication, or multi-step procedures are a fundamental blind spot of automated scanning                                          |
-| Why can't automation find them?           | Because **the response comes back "normal" (successful).** Whether an operation should have been allowed in the first place can only be judged by someone who knows the specification and the business                                                                                  |
-| How is the gap filled?                    | Of sakuda's blind spots, **those visible in the code are caught by the SAST / code review of the companion OSS "maruda"**, and the rest are confirmed by manual testing (maruda is a set of Claude Code skills for secure development, also providing CI audits and Semgrep guardrails) |
-| Are concrete attack steps included?       | **The areas and the reasons are public; procedures and payloads that lead directly to exploitation are not** (responsible disclosure). OWASP Juice Shop was used for verification                                                                                                       |
+| Question                                  | Answer                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Is sakuda alone enough for an assessment? | **No.** It efficiently finds injection, redirects, and misconfiguration / information exposure, but flaws involving authorization, business logic, authentication, or multi-step procedures are a blind spot of outside-in automated scanning (an area people or an AI-based penetration test can still reach — not "impossible for anyone")         |
+| Why can't automation find them?           | Because **the response comes back "normal" (successful).** Whether an operation should have been allowed in the first place needs the context of the specification and the business; an automated judgment without that context cannot tell it apart from a normal response (a person, or an AI-based penetration test given the spec, can judge it) |
+| How is the gap filled?                    | Of sakuda's blind spots, **those visible in the code are caught by the SAST / code review of the companion OSS "maruda"**, and the rest are confirmed by manual testing (maruda is a set of Claude Code skills for secure development, also providing CI audits and Semgrep guardrails)                                                              |
+| Are concrete attack steps included?       | **The areas and the reasons are public; procedures and payloads that lead directly to exploitation are not** (responsible disclosure). OWASP Juice Shop was used for verification                                                                                                                                                                    |
 
 > In one sentence — **automated scanning is a tool that looks for "something odd in the response to what it sent".** Flaws where the response looks perfectly reasonable but the operation itself should never have been allowed are outside its reach.
 
@@ -46,13 +46,13 @@ sakuda discovers input points automatically and efficiently detects vulnerabilit
 
 ---
 
-## 2. What automated scanning cannot reach in principle
+## 2. What outside-in automated scanning struggles with
 
-### Why "in principle"
+### Why automated scanning struggles here
 
 Automated scanning sends requests and mechanically judges **whether the response that comes back is abnormal** (errors, leaked information, signs that an injection succeeded, and so on).
 
-The flaws listed here, however, **come back as normal, successful responses.** An operation that "shows someone else's order", for example, is an ordinary data fetch from the server's point of view, and a success (200) in HTTP terms. Judging that "this operation should not be allowed" requires **understanding the service's specification, business rules, and permission design.** A machine lacks that context, so it can only treat a normal response as normal. This is the fundamental blind spot of automated scanning.
+The flaws listed here, however, **come back as normal, successful responses.** An operation that "shows someone else's order", for example, is an ordinary data fetch from the server's point of view, and a success (200) in HTTP terms. Judging that "this operation should not be allowed" requires **understanding the service's specification, business rules, and permission design.** A machine lacks that context, so it can only treat a normal response as normal. This is the blind spot of outside-in automated scanning — a limit of "automated judgment without the context of the spec", not something impossible for a person or an AI-based penetration test (see the note at the end of this section).
 
 Below, these are explained in plain terms for non-specialists (actual attack procedures are not disclosed).
 
@@ -88,7 +88,16 @@ Below, these are explained in plain terms for non-specialists (actual attack pro
 - **No mechanism to stop repeated submissions (rate limiting)**, and **CAPTCHAs and similar that do not actually stop automation**.
 - **Race conditions (race / TOCTOU)**: nearly simultaneous parallel requests break a "once only" constraint. A blind spot for automated scanning that only looks at single requests.
 
-> **The common thread** — most of these show up as "**authentication (login) succeeds, but the check that the identifier, attribute or operation belongs to / is legitimate for that user (authorization, consistency) is missing**". Automated scanning cannot tell an authenticated normal response from an abnormal one, so this needs human confirmation.
+> **The common thread** — most of these show up as "**authentication (login) succeeds, but the check that the identifier, attribute or operation belongs to / is legitimate for that user (authorization, consistency) is missing**". Automated scanning cannot tell an authenticated normal response from an abnormal one, so this needs confirmation by a person (or an AI-based penetration test given the spec).
+
+### Note: this does not mean "impossible in principle"
+
+What we call "the blind spot of automated scanning" here is the blind spot for the kind of automated scanning that **mechanically judges only the response that comes back from outside, without the context of the specification** (signature / heuristic DAST). It does not mean "unfindable by any means".
+
+- **People with specification knowledge** can find these through manual testing.
+- **A well-designed, prompt-driven AI-based penetration test** can also step into this area — reasoning about business rules and the meaning of values, trying multi-step procedures, and staging concurrency. Recent AI-based penetration testing keeps pushing out the range once dismissed as "impossible for automation".
+
+That people and AI can reach this area does not make automated DAST unnecessary. The remaining question is **not "possible or impossible", but cost, running time, determinism (same result every time?), reproducibility, coverage guarantees, and the supply of an oracle (specification / expected values) that says "what is correct".** Automated DAST holds the outside cheaply, broadly and deterministically; people and AI bring context to settle things deeply — different roles, which is exactly why the next section **stacks** the layers rather than replacing one with another.
 
 ---
 
@@ -109,7 +118,7 @@ flowchart LR
     end
     a --> S["<b>sakuda</b><br/>automated DAST<br/>(outside, dynamic)"]
     b --> M["SAST / code review<br/>(a feature of <b>maruda</b>)<br/>inside, static"]
-    c --> H["Manual testing<br/>by <b>people</b><br/>(judged with spec knowledge)"]
+    c --> H["Testing by <b>people / AI pentest</b><br/>(judged with spec knowledge)"]
 
     classDef tool fill:#1f6feb,stroke:#0b3d91,color:#fff;
     classDef kind fill:#f6f8fa,stroke:#8b949e,color:#24292f;
@@ -117,7 +126,7 @@ flowchart LR
     class a,b,c kind;
 ```
 
-<p align="center"><sub>Figure: the nature of a vulnerability (top) and the layer that catches it (bottom). maruda and people pick up ② and ③, which automated DAST misses.</sub></p>
+<p align="center"><sub>Figure: the nature of a vulnerability (top) and the layer that catches it (bottom). maruda and people / AI pentest pick up ② and ③, which automated DAST misses.</sub></p>
 
 The three layers combine as follows.
 
@@ -135,18 +144,19 @@ The three layers combine as follows.
 
    maruda does not stop at "finding" these. It also wires dependency audits and Semgrep in as **CI gates / hooks (security guardrails)**, so the same concerns are stopped automatically at the code-change stage (= the environment enforces quality and security).
 
-3. **Manual testing by people (and dynamic confirmation)** — business logic that depends on what values _mean_ such as prices and coupons, the window in which a race condition holds under concurrency, whether an environment-dependent CSRF succeeds, the reach of a blind SSRF that returns no response — the parts that reading the code cannot settle are finally judged by **people with specification knowledge** and dynamic confirmation: "should this operation really be allowed?". maruda does not bury these items; it explicitly hands the code-level signs to this layer as _Requires Runtime Verification_.
+3. **Manual testing by people (and an AI-based penetration test given the spec)** — business logic that depends on what values _mean_ such as prices and coupons, the window in which a race condition holds under concurrency, whether an environment-dependent CSRF succeeds, the reach of a blind SSRF that returns no response — the parts that reading the code cannot settle are finally judged by **people with specification knowledge, or a well-designed AI-based penetration test** together with dynamic confirmation: "should this operation really be allowed?". An AI-based penetration test pushes this layer outward, but the challenges of determinism, reproducibility, coverage guarantees and supplying an oracle (expected values) remain — so it **stacks with, rather than replaces,** the automated DAST that holds the outside cheaply, broadly and deterministically. maruda does not bury these items; it explicitly hands the code-level signs to this layer as _Requires Runtime Verification_.
 
-> Key point: layering **sakuda (dynamic, from outside) × maruda (static, from inside) × human judgment** picks up the areas automated scanning alone drops.
-> This document discloses only "which areas automation cannot reach, and why". Concrete attack procedures, payloads and verification scripts that lead directly to exploitation are **withheld for responsible disclosure**.
+> Key point: layering **sakuda (dynamic, from outside) × maruda (static, from inside) × the judgment of people / an AI pentest** picks up the areas automated scanning alone drops.
+> This document discloses only "which areas outside-in automation struggles to reach, and why". Concrete attack procedures, payloads and verification scripts that lead directly to exploitation are **withheld for responsible disclosure**.
 
 ---
 
 ## Summary
 
 - Automated scanning (sakuda) efficiently detects injection, redirects, misconfiguration / exposure and the like.
-- Flaws involving **authorization, authentication, business logic, multi-step procedures and concurrency**, on the other hand, look like normal responses, and are **a fundamental blind spot of automated scanning.**
+- Flaws involving **authorization, authentication, business logic, multi-step procedures and concurrency**, on the other hand, look like normal responses, and are **a blind spot of outside-in automated scanning** (not "impossible for anyone", but the limit of automated judgment without the context of the spec).
 - Of these blind spots, **those visible in the code are detected from the code side by the SAST / code review of the companion OSS "maruda"** (a set of Claude Code skills for secure development, also providing dependency audits and Semgrep CI gates). What remains — the meaning of values, concurrency, environment dependence — is confirmed by manual testing.
+- This blind spot does not mean "impossible in principle": **people with specification knowledge, or a well-designed AI-based penetration test**, can step into this area. What remains is cost, determinism, reproducibility, coverage guarantees and the supply of an oracle (expected values) — which is exactly why the layers are **stacked** rather than used as replacements.
 - Each area was confirmed to be exploitable on an established benchmark (OWASP Juice Shop). This document's policy is to withhold procedures that lead directly to exploitation and to publish **where, and why, human confirmation is needed.**
 
 ## Related links
