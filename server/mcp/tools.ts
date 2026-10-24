@@ -8,6 +8,7 @@ import { getScanDetail } from '../services/reportService'
 import { createScan, listScans } from '../services/scanService'
 import {
   addSiteTargets,
+  createSite,
   getSite,
   listSites,
   loadSiteWithHeaders,
@@ -17,7 +18,7 @@ import {
 import { setTriage } from '../services/triageService'
 import { collectSecrets, redactDeep, wrapUntrusted, type SecretValue } from './redact'
 import { CreateScanBodySchema } from '#shared/schemas/scan'
-import { SiteUpdateSchema, type SiteUpdateInput } from '#shared/schemas/site'
+import { SiteInputSchema, SiteUpdateSchema, type SiteUpdateInput } from '#shared/schemas/site'
 import { AddTargetsBodySchema } from '#shared/schemas/targets'
 import { TriageInputSchema } from '#shared/schemas/triage'
 import type { FindingView, Severity, SitePublic } from '#shared/types/api'
@@ -82,15 +83,68 @@ function validationError(error: z.ZodError): ToolResult {
 }
 
 /** The user's non-local confirmation covers the hosts they saw in the UI.
- * An agent may point the OpenAPI source at a non-local URL only on one of
- * the site's own origins — it cannot make sakuda fetch from a new host. */
-function isConfirmedOpenapiHost(site: SitePublic, openapiUrl: string): boolean {
-  if (isLocalUrl(openapiUrl)) return true
-  if (!URL.canParse(openapiUrl)) return false
-  const origin = new URL(openapiUrl).origin
-  return [site.frontBaseUrl, site.apiBaseUrl].some(
+ * An agent may point a URL at a non-local host only on one of the origins
+ * the user already confirmed — it cannot make sakuda reach a new host. */
+function isOnConfirmedOrigin(url: string, confirmed: (string | null)[]): boolean {
+  if (isLocalUrl(url)) return true
+  if (!URL.canParse(url)) return false
+  const origin = new URL(url).origin
+  return confirmed.some(
     (base) => base !== null && URL.canParse(base) && new URL(base).origin === origin,
   )
+}
+
+/** Site settings only the user may change, in the UI: confirming a non-local
+ * target and opting in to active (injecting) checks. MCP writes cannot set
+ * them; a new site starts with them off and an update keeps the stored ones. */
+const UI_ONLY_DEFAULTS = {
+  nonLocalConfirmed: false,
+  allowMutatingRequests: false,
+  nucleiEnabledRiskTags: [],
+} satisfies Partial<SiteUpdateInput>
+
+/** The site fields an agent may set: the edit form's fields minus the
+ * UI-only ones. Types are loose on purpose — the exact rules run in
+ * SiteInputSchema / SiteUpdateSchema inside the tool, so a rejection reads
+ * `VALIDATION: …` like the REST API's instead of the SDK's own message.
+ * Strict objects, so a UI-only field is rejected rather than dropped. */
+export const AGENT_SITE_FIELDS = {
+  name: z.string(),
+  frontBaseUrl: z.string(),
+  apiBaseUrl: z.string().nullable(),
+  nucleiPaths: z.string(),
+  openapiUrl: z.string().nullable(),
+  openapiJson: z.string().nullable(),
+  zapFeSeedPath: z.string(),
+  discoverySeedPaths: z.string(),
+  crawlScopePaths: z.string(),
+  excludePaths: z.string(),
+  nucleiRateLimit: z.number(),
+  nucleiMaxMinutes: z.number().nullable(),
+  nucleiConcurrency: z.number().nullable(),
+  zapApiMaxMinutes: z.number(),
+  zapFeSpiderMaxMinutes: z.number(),
+  headers: z.array(z.strictObject({ name: z.string(), value: z.string().optional() })),
+  browserStorage: z.array(
+    z.strictObject({ kind: z.string(), name: z.string(), value: z.string().optional() }),
+  ),
+}
+
+const SITE_FIELDS_NOTE =
+  'Same validation as the sakuda UI. Header and browser-storage values are write-only: ' +
+  'the result lists them by name only. Confirming a non-local target ' +
+  '(nonLocalConfirmed) and enabling active checks (allowMutatingRequests, ' +
+  'nucleiEnabledRiskTags) can only be done in the sakuda UI.'
+
+/** A schema rejection, except that the missing non-local confirmation gets
+ * its own code: an agent cannot fix it by retrying, only the user can. */
+function siteValidationError(error: z.ZodError): ToolResult {
+  if (error.issues.some((i) => i.path[0] === 'nonLocalConfirmed'))
+    return refused(
+      'NON_LOCAL_REQUIRES_UI: a non-local target must be confirmed by the user; create or ' +
+        'edit the site in the sakuda UI first',
+    )
+  return validationError(error)
 }
 
 /** The site's editable fields as an update that keeps every one of them —
@@ -139,6 +193,11 @@ function resolveReveal(requested: boolean | undefined, ctx: McpRequestContext): 
     reveal: false,
     revealDenied: 'API key required (issue one on the sakuda MCP page and send it)',
   }
+}
+
+/** What a site write returns: the same snapshot as get_site. */
+function siteResult(deps: McpToolDeps, site: SitePublic) {
+  return redactDeep(toSiteSnapshot(site), secretsFor(deps, site.id))
 }
 
 /** Redact first, then wrap: truncating before redaction could cut a secret in
@@ -285,6 +344,56 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
   const writes = { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
 
   server.registerTool(
+    'create_site',
+    {
+      description:
+        'Create a site (scan target). name and frontBaseUrl are required; other settings ' +
+        `default as in the UI. Only local targets: a non-local URL is refused. ${SITE_FIELDS_NOTE} ` +
+        'Each call creates a new site, so check list_sites before retrying.',
+      inputSchema: z.strictObject(AGENT_SITE_FIELDS).partial(),
+      annotations: { ...writes, idempotentHint: false },
+    },
+    (input) => {
+      const parsed = SiteInputSchema.safeParse({ ...input, ...UI_ONLY_DEFAULTS })
+      if (!parsed.success) return siteValidationError(parsed.error)
+      return write(() => siteResult(deps, createSite(deps.site, parsed.data)))
+    },
+  )
+
+  server.registerTool(
+    'update_site',
+    {
+      description:
+        'Update a site’s settings. Only the fields you pass change; the rest are kept. ' +
+        'headers and browserStorage, when passed, replace the whole list: a row without ' +
+        'value keeps its stored value, and a row you leave out is deleted. A non-local URL is ' +
+        'accepted only on an origin the site already has. ' +
+        SITE_FIELDS_NOTE,
+      inputSchema: z
+        .strictObject(AGENT_SITE_FIELDS)
+        .partial()
+        .extend({ siteId: z.string().min(1) }),
+      annotations: { ...writes, idempotentHint: true },
+    },
+    ({ siteId, ...fields }) => {
+      const site = getSite(db, siteId)
+      if (!site) return refused(`SITE_NOT_FOUND: site ${siteId} not found`)
+      const parsed = SiteUpdateSchema.safeParse({ ...currentSettings(site), ...fields })
+      if (!parsed.success) return siteValidationError(parsed.error)
+      const confirmed = [site.frontBaseUrl, site.apiBaseUrl, site.openapiUrl]
+      const newHosts = [parsed.data.frontBaseUrl, parsed.data.apiBaseUrl, parsed.data.openapiUrl]
+        .filter((url): url is string => url !== null)
+        .filter((url) => !isOnConfirmedOrigin(url, confirmed))
+      if (newHosts.length > 0)
+        return refused(
+          `HOST_NOT_CONFIRMED: ${newHosts.join(', ')} is not on an origin the site already ` +
+            'has; change the site to a new non-local host in the sakuda UI',
+        )
+      return write(() => siteResult(deps, updateSite(deps.site, siteId, parsed.data)))
+    },
+  )
+
+  server.registerTool(
     'add_targets',
     {
       description:
@@ -331,7 +440,10 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
         openapiJson: openapiJson ?? null,
       })
       if (!parsed.success) return validationError(parsed.error)
-      if (parsed.data.openapiUrl !== null && !isConfirmedOpenapiHost(site, parsed.data.openapiUrl))
+      if (
+        parsed.data.openapiUrl !== null &&
+        !isOnConfirmedOrigin(parsed.data.openapiUrl, [site.frontBaseUrl, site.apiBaseUrl])
+      )
         return refused(
           'OPENAPI_HOST_NOT_CONFIRMED: a non-local openapiUrl must be on the site’s front or ' +
             'API base URL origin; set a URL on another host in the sakuda UI',

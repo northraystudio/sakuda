@@ -8,8 +8,8 @@ import { engineRuns, findings, scans, sites } from '../../db/schema'
 import { createSiteCipher } from '../../domain/headerCipher'
 import { createScan } from '../../services/scanService'
 import { createSite, loadSiteWithHeaders, type SiteServiceDeps } from '../../services/siteService'
-import { createSakudaMcpServer, type McpRequestContext } from '../tools'
-import { SiteInputSchema } from '#shared/schemas/site'
+import { AGENT_SITE_FIELDS, createSakudaMcpServer, type McpRequestContext } from '../tools'
+import { SiteInputSchema, SiteUpdateSchema } from '#shared/schemas/site'
 
 const migrationsFolder = fileURLToPath(new URL('../../db/migrations', import.meta.url))
 const TOKEN = 'tok-0123456789'
@@ -115,7 +115,7 @@ function seed() {
 }
 
 describe('sakuda MCP tools', () => {
-  it('lists the five read-only tools and the four write tools', async () => {
+  it('lists the five read-only tools and the six write tools', async () => {
     const c = await connect()
     const { tools } = await c.listTools()
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name)
@@ -129,9 +129,11 @@ describe('sakuda MCP tools', () => {
     ])
     expect(writes.sort()).toEqual([
       'add_targets',
+      'create_site',
       'set_finding_triage',
       'set_openapi',
       'start_scan',
+      'update_site',
     ])
   })
 
@@ -435,6 +437,183 @@ describe('sakuda MCP write tools (#18)', () => {
         (await call(c, 'set_finding_triage', { findingId: 'f1', status: 'accepted', reason: ' ' }))
           .isError,
       ).toBe(true)
+    })
+  })
+})
+
+describe('sakuda MCP site write tools (#46)', () => {
+  const UI_ONLY = ['nonLocalConfirmed', 'allowMutatingRequests', 'nucleiEnabledRiskTags']
+
+  it('offers every site field except the UI-only ones', () => {
+    const formFields = Object.keys(SiteUpdateSchema.shape).filter((k) => !UI_ONLY.includes(k))
+    expect(Object.keys(AGENT_SITE_FIELDS).sort()).toEqual(formFields.sort())
+  })
+
+  describe('create_site', () => {
+    it('creates a site that list_sites and get_site show, with secrets by name only', async () => {
+      const c = await connect()
+      const created = await call(c, 'create_site', {
+        name: 'shop',
+        frontBaseUrl: 'http://localhost:3001/',
+        nucleiPaths: '/api/products',
+        headers: [{ name: 'Authorization', value: `Bearer ${TOKEN}` }],
+        browserStorage: [{ kind: 'cookie', name: 'token', value: STORAGE }],
+      })
+      expect(created.isError).toBe(false)
+      expect(created.text).not.toContain(TOKEN)
+      expect(created.text).not.toContain(STORAGE)
+      expect(created.json).toMatchObject({
+        name: 'shop',
+        frontBaseUrl: 'http://localhost:3001',
+        nucleiPaths: '/api/products',
+        headerNames: ['Authorization'],
+        nonLocalConfirmed: false,
+        allowMutatingRequests: false,
+      })
+
+      const got = await call(c, 'get_site', { siteId: created.json.id })
+      expect(got.json).toEqual(created.json)
+      const listed = await call(c, 'list_sites')
+      expect(listed.json.map((s: { id: string }) => s.id)).toEqual([created.json.id])
+      expect(loadSiteWithHeaders(deps, created.json.id)?.headers).toEqual([
+        { name: 'Authorization', value: `Bearer ${TOKEN}` },
+      ])
+    })
+
+    it('rejects what POST /api/sites rejects, with the same VALIDATION code', async () => {
+      const c = await connect()
+      expect(
+        (await call(c, 'create_site', { frontBaseUrl: 'http://localhost:3001' })).text,
+      ).toMatch(/^VALIDATION: name: /)
+      expect(
+        (await call(c, 'create_site', { name: 'x', frontBaseUrl: 'ftp://localhost' })).text,
+      ).toBe('VALIDATION: frontBaseUrl: must be an http(s) URL')
+      const noValue = await call(c, 'create_site', {
+        name: 'x',
+        frontBaseUrl: 'http://localhost:3001',
+        headers: [{ name: 'Authorization' }],
+      })
+      expect(noValue.text).toMatch(/^VALIDATION: headers\.0\.value: /)
+      expect((await call(c, 'list_sites')).json).toEqual([])
+    })
+
+    it('refuses a non-local target and the UI-only settings', async () => {
+      const c = await connect()
+      const nonLocal = await call(c, 'create_site', {
+        name: 'x',
+        frontBaseUrl: 'https://shop.example.com',
+      })
+      expect(nonLocal.isError).toBe(true)
+      expect(nonLocal.text).toMatch(/^NON_LOCAL_REQUIRES_UI: /)
+      for (const [key, value] of [
+        ['nonLocalConfirmed', true],
+        ['allowMutatingRequests', true],
+        ['nucleiEnabledRiskTags', ['dos']],
+      ] as const) {
+        const res = await call(c, 'create_site', {
+          name: 'x',
+          frontBaseUrl: 'https://shop.example.com',
+          [key]: value,
+        })
+        expect(res.isError).toBe(true)
+        expect(res.text).toContain(key)
+      }
+      expect((await call(c, 'list_sites')).json).toEqual([])
+    })
+  })
+
+  describe('update_site', () => {
+    it('changes only the passed fields and keeps secrets unless they are passed', async () => {
+      const { site } = seed()
+      const c = await connect()
+      const before = (await call(c, 'get_site', { siteId: site.id })).json
+      const updated = await call(c, 'update_site', {
+        siteId: site.id,
+        name: 'shop v2',
+        nucleiRateLimit: 10,
+      })
+      expect(updated.json).toEqual({ ...before, name: 'shop v2', nucleiRateLimit: 10 })
+      expect(updated.text).not.toContain(TOKEN)
+      expect(loadSiteWithHeaders(deps, site.id)?.headers).toEqual([
+        { name: 'Authorization', value: `Bearer ${TOKEN}` },
+      ])
+
+      // A row without value keeps the stored one; a new value replaces it.
+      await call(c, 'update_site', {
+        siteId: site.id,
+        headers: [{ name: 'Authorization' }, { name: 'X-Api-Key', value: 'k-0123456789' }],
+      })
+      expect(loadSiteWithHeaders(deps, site.id)?.headers).toEqual([
+        { name: 'Authorization', value: `Bearer ${TOKEN}` },
+        { name: 'X-Api-Key', value: 'k-0123456789' },
+      ])
+      const read = await call(c, 'get_site', { siteId: site.id })
+      expect(read.text).not.toContain('k-0123456789')
+      expect(read.json.headerNames).toEqual(['Authorization', 'X-Api-Key'])
+    })
+
+    it('rejects invalid input and unknown sites, writing nothing', async () => {
+      const site = createSite(
+        deps,
+        SiteInputSchema.parse({ name: 'shop', frontBaseUrl: 'http://localhost:3001' }),
+      )
+      const c = await connect()
+      expect(
+        (await call(c, 'update_site', { siteId: site.id, nucleiPaths: 'api:/x' })).text,
+      ).toMatch(/^VALIDATION: apiBaseUrl: /)
+      expect((await call(c, 'update_site', { siteId: site.id, name: '' })).text).toMatch(
+        /^VALIDATION: name: /,
+      )
+      expect(await call(c, 'update_site', { siteId: 'nope', name: 'x' })).toMatchObject({
+        isError: true,
+        text: 'SITE_NOT_FOUND: site nope not found',
+      })
+      const res = await call(c, 'update_site', { siteId: site.id, allowMutatingRequests: true })
+      expect(res.isError).toBe(true)
+      expect(res.text).toContain('allowMutatingRequests')
+      expect((await call(c, 'get_site', { siteId: site.id })).json).toMatchObject({
+        name: 'shop',
+        nucleiPaths: '',
+        allowMutatingRequests: false,
+      })
+    })
+
+    it('keeps non-local URLs on the origins the user confirmed', async () => {
+      const local = createSite(
+        deps,
+        SiteInputSchema.parse({ name: 'local', frontBaseUrl: 'http://localhost:3001' }),
+      )
+      const remote = createSite(
+        deps,
+        SiteInputSchema.parse({
+          name: 'remote',
+          frontBaseUrl: 'https://shop.example.com',
+          nonLocalConfirmed: true,
+        }),
+      )
+      const c = await connect()
+      const toRemote = await call(c, 'update_site', {
+        siteId: local.id,
+        frontBaseUrl: 'https://shop.example.com',
+      })
+      expect(toRemote.text).toMatch(/^NON_LOCAL_REQUIRES_UI: /)
+
+      expect(
+        (
+          await call(c, 'update_site', {
+            siteId: remote.id,
+            apiBaseUrl: 'https://shop.example.com/api',
+          })
+        ).json.apiBaseUrl,
+      ).toBe('https://shop.example.com/api')
+      const elsewhere = await call(c, 'update_site', {
+        siteId: remote.id,
+        apiBaseUrl: 'https://api.other.example.net',
+      })
+      expect(elsewhere.text).toMatch(/^HOST_NOT_CONFIRMED: https:\/\/api\.other\.example\.net /)
+      expect((await call(c, 'get_site', { siteId: remote.id })).json.apiBaseUrl).toBe(
+        'https://shop.example.com/api',
+      )
     })
   })
 })
