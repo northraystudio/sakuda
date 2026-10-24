@@ -540,6 +540,13 @@ Claude Desktop には、リモートのサーバーに固定のヘッダーを�
 
 書き込みツールは UI と同じ検証・チェックを通ります。
 
+- `create_site` — **ローカル**の対象のサイトを作成（ローカル以外の URL は拒否。そのサイトは UI で
+  作成してください）。呼ぶたびに新しいサイトができます。
+- `update_site` — 渡した項目だけを変更。`headers` / `browserStorage` を渡すと一覧ごと置き換わり、
+  `value` を省いた行は保存済みの値を保ち、一覧から外した行は削除されます（編集フォームと同じ）。
+  ローカル以外の URL は、サイトがすでに持つオリジンに限ります。値は書き込み専用で、結果には名前だけが出ます。
+  どちらのツールも、非ローカルの確認と能動チェックの有効化（`nonLocalConfirmed`、
+  `allowMutatingRequests`、`nucleiEnabledRiskTags`）はできません。これらは UI で設定します。
 - `add_targets` — 対象行（`[METHOD] [api:]/path`）を追加。保存済みの行はスキップ。
 - `set_openapi` — `openapiUrl` か `openapiJson` を設定（もう一方は消える）。ローカル以外の
   URL は、先に UI でサイトの非ローカル確認を済ませておく必要があり（エージェントからは確認できません）、

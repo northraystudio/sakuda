@@ -551,6 +551,16 @@ Read tools: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`.
 
 Write tools go through the same validation and checks as the UI:
 
+- `create_site` — create a site for a **local** target (a non-local URL is
+  refused: create that site in the UI). Each call creates a new site.
+- `update_site` — change only the fields passed. `headers` / `browserStorage`,
+  when passed, replace the whole list: a row without `value` keeps its stored
+  value and a row left out is deleted, as in the edit form. A non-local URL is
+  accepted only on an origin the site already has. Values are write-only — the
+  result lists them by name.
+  Neither tool can confirm a non-local target or enable active checks
+  (`nonLocalConfirmed`, `allowMutatingRequests`, `nucleiEnabledRiskTags`); those
+  stay in the UI.
 - `add_targets` — append target lines (`[METHOD] [api:]/path`); saved lines are skipped.
 - `set_openapi` — set `openapiUrl` or `openapiJson` (the other is cleared). A
   non-local URL needs the site to be confirmed for non-local scanning in the UI
