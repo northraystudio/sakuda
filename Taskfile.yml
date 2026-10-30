@@ -1,0 +1,205 @@
+# sakuda — task runner (replaces the Makefile). Every port/secret comes from
+# .env (copy .env.example). Run `task` from anywhere in the repo to list tasks;
+# install Task from https://taskfile.dev/docs/installation.
+#
+# Precedence: CLI (`task up SAKUDA_PORT=3005`) > .env > defaults below.
+#
+# The defaults are applied per task (the `env: *ports` lines), not globally:
+# Task resolves top-level vars/env before it reads .env, so a top-level
+# default would hide the value in .env.
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  # Juice Shop is its own compose project (targets/juice-shop/compose.yml), so
+  # sakuda's down/reset never touch it. Compose looks for .env next to the
+  # compose file, so point it at the root .env explicitly (when one exists —
+  # the defaults cover a checkout without it).
+  JUICE_COMPOSE:
+    sh: |
+      if [ -f .env ]; then
+        echo "docker compose --env-file .env -f targets/juice-shop/compose.yml"
+      else
+        echo "docker compose -f targets/juice-shop/compose.yml"
+      fi
+
+# Host-side ports, exported to the commands so docker compose and the seed
+# script see the same values as the task itself.
+x-ports: &ports
+  SAKUDA_PORT: '{{.SAKUDA_PORT | default "3001"}}'
+  SAKUDA_BIND: '{{.SAKUDA_BIND | default "127.0.0.1"}}'
+  JUICESHOP_PORT: '{{.JUICESHOP_PORT | default "4001"}}'
+
+tasks:
+  default:
+    desc: Show this help
+    silent: true
+    env: *ports
+    cmds:
+      - task --list
+      - echo
+      - 'echo "  ports: sakuda http://localhost:$SAKUDA_PORT  juice-shop http://localhost:$JUICESHOP_PORT  (bind $SAKUDA_BIND)"'
+
+  # ---- setup ---------------------------------------------------------------
+
+  env:
+    desc: Create .env from .env.example (keeps an existing .env) and fill the encryption key
+    silent: true
+    cmds:
+      - |
+        if [ -f .env ]; then echo ".env exists — leaving it alone"; else
+          cp .env.example .env
+          key="$(pnpm -s keygen)"
+          # -i.bak (not -i '') works with both BSD (macOS) and GNU sed
+          sed -i.bak "s|^SAKUDA_ENCRYPTION_KEY=.*|SAKUDA_ENCRYPTION_KEY=$key|" .env && rm -f .env.bak
+          echo "wrote .env with a fresh SAKUDA_ENCRYPTION_KEY — keep it safe"
+        fi
+
+  keygen:
+    desc: Print a new SAKUDA_ENCRYPTION_KEY
+    silent: true
+    cmds:
+      - pnpm -s keygen
+
+  # ---- docker (production-like, one container) -----------------------------
+
+  build:
+    desc: Build the sakuda image (ZAP + nuclei + templates + app)
+    cmds:
+      - docker compose build --no-cache sakuda
+
+  up:
+    desc: Start sakuda in the background (http://localhost:SAKUDA_PORT)
+    env: *ports
+    cmds:
+      - docker compose up -d sakuda
+      - cmd: 'echo "sakuda: http://localhost:$SAKUDA_PORT"'
+        silent: true
+
+  down:
+    desc: Stop and remove the sakuda container (data volume kept; Juice Shop untouched)
+    cmds:
+      - docker compose down
+
+  restart:
+    desc: Restart sakuda
+    cmds:
+      - docker compose restart sakuda
+
+  logs:
+    desc: Follow sakuda logs
+    cmds:
+      - docker compose logs -f sakuda
+
+  ps:
+    desc: Show container status (sakuda, then Juice Shop)
+    cmds:
+      - docker compose ps
+      - cmd: '{{.JUICE_COMPOSE}} ps'
+        silent: true
+
+  open:
+    desc: Open the UI in the browser
+    env: *ports
+    cmds:
+      - |
+        if [ "$(uname)" = Darwin ]; then
+          open "http://localhost:$SAKUDA_PORT"
+        else
+          xdg-open "http://localhost:$SAKUDA_PORT"
+        fi
+
+  capture-browser:
+    desc: Start a Chrome that sakuda can drive for "Log in with browser" (Edit site → Authentication)
+    # Auth capture (#17): CAPTURE_CDP_PORT is the DevTools port of the host
+    # Chrome that sakuda drives. Each launch gets a fresh throwaway profile
+    # (Chrome refuses remote debugging on the default one), so your everyday
+    # logins stay out of reach and no captured session lingers on disk;
+    # sakuda quits that Chrome after a capture.
+    silent: true
+    vars:
+      CAPTURE_CDP_PORT: '{{.CAPTURE_CDP_PORT | default "9222"}}'
+    cmds:
+      - |
+        profile="$(mktemp -d "${TMPDIR:-/tmp}/sakuda-capture.XXXXXX")"
+        if [ "$(uname)" = Darwin ]; then
+          open -na "Google Chrome" --args --remote-debugging-port={{.CAPTURE_CDP_PORT}} \
+            --user-data-dir="$profile" --no-first-run about:blank
+        else
+          bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          [ -n "$bin" ] || { echo "Chrome/Chromium not found"; exit 1; }
+          nohup "$bin" --remote-debugging-port={{.CAPTURE_CDP_PORT}} --user-data-dir="$profile" \
+            --no-first-run about:blank >/dev/null 2>&1 &
+        fi
+        echo "capture browser: DevTools on 127.0.0.1:{{.CAPTURE_CDP_PORT}}, throwaway profile $profile"
+        echo "anything on this machine can drive it while it runs — sakuda quits it after Capture; quit it yourself if you stop early"
+
+  juice-up:
+    desc: Start OWASP Juice Shop as a dry-run target (http://localhost:JUICESHOP_PORT)
+    env: *ports
+    cmds:
+      - '{{.JUICE_COMPOSE}} up -d'
+      - cmd: 'echo "juice-shop: http://localhost:$JUICESHOP_PORT  → task juice-seed registers it in sakuda as a ready-to-scan site"'
+        silent: true
+
+  juice-seed:
+    desc: Register Juice Shop in sakuda as a logged-in demo site (needs task up + task juice-up; re-run refreshes the token)
+    env: *ports
+    cmds:
+      - pnpm -s seed:juice
+
+  juice-down:
+    desc: Stop and remove Juice Shop (its accounts reset on the next start; run task juice-seed again after juice-up)
+    cmds:
+      - '{{.JUICE_COMPOSE}} down'
+
+  # ---- local development (native nuclei, ZAP via scripts/zap-docker.sh) ----
+
+  dev:
+    desc: Run the Nuxt dev server on SAKUDA_PORT
+    env: *ports
+    cmds:
+      - pnpm dev --port "$SAKUDA_PORT"
+
+  test:
+    desc: Unit + component tests
+    cmds:
+      - pnpm test
+
+  e2e:
+    desc: API e2e tests
+    cmds:
+      - pnpm test:e2e
+
+  lint:
+    desc: ESLint + Prettier check
+    cmds:
+      - pnpm lint
+
+  typecheck:
+    desc: nuxt typecheck
+    cmds:
+      - pnpm run typecheck
+
+  check:
+    desc: Everything CI runs (lint, typecheck, test — in order)
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
+  # ---- cleanup -------------------------------------------------------------
+
+  clean:
+    desc: Remove local build output and dev scan data (./data, .output, .nuxt)
+    cmds:
+      - rm -rf data .output .nuxt
+
+  reset-data:
+    desc: 'DESTRUCTIVE: delete the docker data volume (sites, scans, encrypted headers). Requires CONFIRM=1'
+    preconditions:
+      - sh: '[ "{{.CONFIRM}}" = "1" ]'
+        msg: "refusing: run 'task reset-data CONFIRM=1' to delete the sakuda-data volume"
+    cmds:
+      - docker compose down -v

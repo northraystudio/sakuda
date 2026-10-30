@@ -94,12 +94,12 @@ describe('openTab', () => {
     })
   })
 
-  it('reports an unreachable browser with the make capture-browser hint', async () => {
+  it('reports an unreachable browser with the task capture-browser hint', async () => {
     stubFetch({})
     const err = await openTab('http://localhost:3000/', OPTS).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(CdpError)
     expect(err).toMatchObject({ code: 'CDP_UNREACHABLE' })
-    expect(String(err)).toContain('make capture-browser')
+    expect(String(err)).toContain('task capture-browser')
   })
 })
 

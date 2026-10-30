@@ -2,7 +2,7 @@ import type { RequestShape, SitePublic } from '../../shared/types/api.ts'
 import type { TargetShape } from '../../shared/schemas/targets.ts'
 
 /** The origin `targets/juice-shop/site.json` is written against — what
- * `make juice-up` publishes with the default `JUICESHOP_PORT`. */
+ * `task juice-up` publishes with the default `JUICESHOP_PORT`. */
 export const DEFAULT_JUICE_ORIGIN = 'http://127.0.0.1:4001'
 
 /** What `targets/juice-shop/site.json` holds: a site as `GET /api/sites/:id`

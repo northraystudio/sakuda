@@ -92,20 +92,33 @@ completeness guarantee. The full write-up, verified on OWASP Juice Shop, is in
 ## Quick start (Docker)
 
 Everything — the app, nuclei + templates, and ZAP — ships in one image.
-`docker-compose.yml` + `Makefile` wrap the commands; every port and secret is
+`docker-compose.yml` + `Taskfile.yml` wrap the commands; every port and secret is
 read from `.env`.
 
+The commands run through [Task](https://taskfile.dev/) v3 (`task`; there is no
+Makefile). See the [official installation guide](https://taskfile.dev/docs/installation)
+for your OS:
+
 ```bash
-make env      # .env from .env.example with a fresh SAKUDA_ENCRYPTION_KEY
-make build    # build the image (10–20 min the first time)
-make up       # start → http://localhost:3001
-make logs     # follow logs · make restart · make ps
-make down && make up   # recreate sakuda (e.g. after make build)
-make down     # stops sakuda only — the data volume and Juice Shop are untouched
-make juice-up && make juice-seed   # optional: OWASP Juice Shop as a ready-to-scan demo site (auth included)
+brew install go-task   # e.g. Homebrew (macOS / Linux)
+task --version
 ```
 
-`make help` lists every target. Without make:
+`task` works from any directory in the repo (it looks for `Taskfile.yml` in the
+parent directories). Pass arguments as `name=value`, e.g.
+`task up SAKUDA_PORT=3005` or `task reset-data CONFIRM=1`.
+
+```bash
+task env      # .env from .env.example with a fresh SAKUDA_ENCRYPTION_KEY
+task build    # build the image (10–20 min the first time)
+task up       # start → http://localhost:3001
+task logs     # follow logs · task restart · task ps
+task down && task up   # recreate sakuda (e.g. after task build)
+task down     # stops sakuda only — the data volume and Juice Shop are untouched
+task juice-up && task juice-seed   # optional: OWASP Juice Shop as a ready-to-scan demo site (auth included)
+```
+
+`task` lists every task. Without Task:
 
 ```bash
 docker compose up -d sakuda          # same thing, reads .env
@@ -125,11 +138,11 @@ The container always listens on **3000**; the host-side ports come from
 
 | `.env` variable  | Default     | What                                                                   |
 | ---------------- | ----------- | ---------------------------------------------------------------------- |
-| `SAKUDA_PORT`    | `3001`      | sakuda UI/API (`make up`, `make dev`)                                  |
-| `JUICESHOP_PORT` | `4001`      | OWASP Juice Shop dry-run target (`make juice-up`, own compose project) |
+| `SAKUDA_PORT`    | `3001`      | sakuda UI/API (`task up`, `task dev`)                                  |
+| `JUICESHOP_PORT` | `4001`      | OWASP Juice Shop dry-run target (`task juice-up`, own compose project) |
 | `SAKUDA_BIND`    | `127.0.0.1` | Bind address for published ports — keep it loopback-only               |
 
-Override per invocation with `make up SAKUDA_PORT=3005`.
+Override per invocation with `task up SAKUDA_PORT=3005`.
 
 - **Trust model: sakuda has no authentication.** Anyone who can reach the
   port can read/create/modify sites (including their configured headers) and
@@ -142,7 +155,7 @@ Override per invocation with `make up SAKUDA_PORT=3005`.
   it. Behind a reverse proxy or over the LAN, list the names you open sakuda
   by in `SAKUDA_ALLOWED_HOSTS` (e.g. `sakuda.lan,192.168.1.5`); startup logs a
   warning while it is set. The check cannot be turned off, and `/mcp` stays
-  loopback-only either way. The list applies to the built app (`make up`);
+  loopback-only either way. The list applies to the built app (`task up`);
   under `pnpm dev`, Vite's own host check still refuses names other than
   loopback.
 - **Keep the key.** `SAKUDA_ENCRYPTION_KEY` encrypts stored request headers
@@ -194,7 +207,7 @@ Override per invocation with `make up SAKUDA_PORT=3005`.
 | `SAKUDA_ZAP_LOCALHOST_ALIAS`              | `host.docker.internal`                                                 | Same, for ZAP only (falls back to `SAKUDA_LOCALHOST_ALIAS`). ZAP's Firefox treats this host as a secure context.                 |
 | `SAKUDA_ENGINE_GRACE_MINUTES`             | `10`                                                                   | Grace period before an orphaned engine process is treated as failed.                                                             |
 | `SAKUDA_JOB_RUNNER`                       | `on`                                                                   | Set `off` to disable the in-process scan queue (e.g. in tests).                                                                  |
-| `SAKUDA_CAPTURE_CDP_URL`                  | `http://127.0.0.1:9222` (`http://host.docker.internal:9222` in Docker) | DevTools endpoint of the host Chrome used by **Log in with browser** (`make capture-browser`). Read from env only.               |
+| `SAKUDA_CAPTURE_CDP_URL`                  | `http://127.0.0.1:9222` (`http://host.docker.internal:9222` in Docker) | DevTools endpoint of the host Chrome used by **Log in with browser** (`task capture-browser`). Read from env only.               |
 | `SAKUDA_ALLOWED_HOSTS`                    | _(unset)_                                                              | Comma-separated hostnames (no port) that `/api/**` accepts in `Host`/`Origin` besides loopback. See the trust model above.       |
 | `LOG_LEVEL`                               | `info`                                                                 | `debug` \| `info` \| `warn` \| `error`.                                                                                          |
 
@@ -205,7 +218,7 @@ a copyable local `.env`.
 
 ```bash
 pnpm install
-make env                    # .env with a fresh key (or: cp .env.example .env && pnpm keygen)
+task env                    # .env with a fresh key (or: cp .env.example .env && pnpm keygen)
 ```
 
 nuclei, katana, dalfox and httpx run as native binaries and ZAP runs via Docker in dev:
@@ -238,22 +251,22 @@ nuclei, katana, dalfox and httpx run as native binaries and ZAP runs via Docker 
 Then:
 
 ```bash
-make dev            # nuxt dev on SAKUDA_PORT → http://localhost:3001
-make test           # unit + component tests
-make e2e            # API e2e tests
-make lint · make typecheck · make check (all three)
-make juice-up       # Juice Shop on JUICESHOP_PORT as a scan target · make juice-down
-make juice-seed     # register it in sakuda as a logged-in demo site (idempotent; re-run after juice-down/up)
+task dev            # nuxt dev on SAKUDA_PORT → http://localhost:3001
+task test           # unit + component tests
+task e2e            # API e2e tests
+task lint · task typecheck · task check (all three)
+task juice-up       # Juice Shop on JUICESHOP_PORT as a scan target · task juice-down
+task juice-seed     # register it in sakuda as a logged-in demo site (idempotent; re-run after juice-down/up)
 ```
 
 Juice Shop is a separate compose project (`targets/juice-shop/compose.yml`,
-project `sakuda-juice-shop`) that reads the same `.env`, so `make down` /
-`make reset-data` never touch it. Without make:
+project `sakuda-juice-shop`) that reads the same `.env`, so `task down` /
+`task reset-data` never touch it. Without Task:
 `docker compose --env-file .env -f targets/juice-shop/compose.yml up -d`.
-Recreating the container (`make juice-down`) resets its accounts and tokens.
+Recreating the container (`task juice-down`) resets its accounts and tokens.
 Upgrading from a checkout where Juice Shop lived in `docker-compose.yml`:
 remove the old container once with `docker rm -f sakuda-juice-shop`, then
-`make juice-up`.
+`task juice-up`.
 
 (`pnpm dev --port 3001`, `pnpm test`, `pnpm test:e2e`, `pnpm run lint`,
 `pnpm run typecheck` underneath.)
@@ -432,7 +445,7 @@ script that is written 0600 for the run and deleted afterwards. For OWASP
 Juice Shop that is `localStorage token = <JWT>` plus `sessionStorage bid =
 <basket id>` from `POST /rest/user/login`.
 
-**Log in with a browser instead of copy-pasting.** Run `make capture-browser`
+**Log in with a browser instead of copy-pasting.** Run `task capture-browser`
 (a Chrome on your machine with a throwaway profile and DevTools on
 `127.0.0.1:9222`), then in **Edit site → Authentication** press **Log in with
 browser**: the site opens in that Chrome. Log in as usual, press

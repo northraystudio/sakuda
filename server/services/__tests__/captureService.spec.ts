@@ -57,7 +57,7 @@ describe('captureService', () => {
   })
 
   it('maps an unreachable browser to 503 with the hint, and a missing site to 404', async () => {
-    openTab.mockRejectedValue(new CdpError('CDP_UNREACHABLE', 'run make capture-browser'))
+    openTab.mockRejectedValue(new CdpError('CDP_UNREACHABLE', 'run task capture-browser'))
     await expect(startCapture(deps, siteId)).rejects.toMatchObject({
       statusCode: 503,
       code: 'CDP_UNREACHABLE',

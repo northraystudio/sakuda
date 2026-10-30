@@ -3,10 +3,10 @@
 # other local stacks that already use the usual 3000 / 8080 ports. Everything
 # inside the container stays on 3000.
 #
-#   make up          start sakuda
+#   task up          start sakuda
 #
 # The OWASP Juice Shop dry-run target is a separate compose project:
-# targets/juice-shop/compose.yml (`make juice-up`).
+# targets/juice-shop/compose.yml (`task juice-up`).
 
 services:
   sakuda:
@@ -16,7 +16,7 @@ services:
     ports:
       - '${SAKUDA_BIND:-127.0.0.1}:${SAKUDA_PORT:-3001}:3000'
     environment:
-      SAKUDA_ENCRYPTION_KEY: ${SAKUDA_ENCRYPTION_KEY:?put the output of `make keygen` into .env}
+      SAKUDA_ENCRYPTION_KEY: ${SAKUDA_ENCRYPTION_KEY:?put the output of `task keygen` into .env}
       SAKUDA_NUCLEI_MAX_MINUTES: ${SAKUDA_NUCLEI_MAX_MINUTES:-60}
       SAKUDA_NUCLEI_CONCURRENCY: ${SAKUDA_NUCLEI_CONCURRENCY:-25}
       SAKUDA_HTTPX_MAX_MINUTES: ${SAKUDA_HTTPX_MAX_MINUTES:-5}
@@ -26,7 +26,7 @@ services:
       SAKUDA_OAST_TOKEN: ${SAKUDA_OAST_TOKEN:-}
       SAKUDA_ENGINE_GRACE_MINUTES: ${SAKUDA_ENGINE_GRACE_MINUTES:-10}
       SAKUDA_ZAP_MAX_HEAP: ${SAKUDA_ZAP_MAX_HEAP:-1024m}
-      # Host Chrome started by `make capture-browser` (#17).
+      # Host Chrome started by `task capture-browser` (#17).
       SAKUDA_CAPTURE_CDP_URL: ${SAKUDA_CAPTURE_CDP_URL:-http://host.docker.internal:9222}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     # ZAP's Ajax spider runs Firefox: needs a large /dev/shm and a few GB of RAM.

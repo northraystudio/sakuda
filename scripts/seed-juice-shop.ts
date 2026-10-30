@@ -1,11 +1,11 @@
 /**
- * `make juice-seed` / `pnpm seed:juice` — register the OWASP Juice Shop demo
+ * `task juice-seed` / `pnpm seed:juice` — register the OWASP Juice Shop demo
  * site in a running sakuda (#102): demo user → login → JWT → one "Juice Shop"
  * site with Authorization / Cookie headers and the localStorage token, from
  * `targets/juice-shop/site.json`. Safe to re-run: the site is matched by name
  * and only its secrets are refreshed.
  *
- * Needs `make up` (sakuda on SAKUDA_PORT) and `make juice-up` (Juice Shop on
+ * Needs `task up` (sakuda on SAKUDA_PORT) and `task juice-up` (Juice Shop on
  * JUICESHOP_PORT). Ports come from the environment, falling back to `.env`,
  * then to the defaults below.
  */
@@ -29,7 +29,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 function loadDotEnv(): void {
   const envFile = join(repoRoot, '.env')
-  // process.loadEnvFile never overrides variables already set — so `make`
+  // process.loadEnvFile never overrides variables already set — so `task`
   // (which exports .env itself) and explicit `SAKUDA_PORT=… pnpm seed:juice`
   // both win over the file.
   if (existsSync(envFile)) process.loadEnvFile(envFile)
@@ -47,9 +47,9 @@ const fetchWithTimeout: typeof fetch = (input, init) =>
 async function main(): Promise<void> {
   loadDotEnv()
   // sakuda: `localhost`, so the Docker image (published on 127.0.0.1) and
-  // `make dev` (Nuxt listens on ::1) are both reached. Juice Shop: 127.0.0.1,
+  // `task dev` (Nuxt listens on ::1) are both reached. Juice Shop: 127.0.0.1,
   // because this origin is what gets stored as the site's frontBaseUrl and
-  // must match what `make juice-up` publishes and site.json is written against.
+  // must match what `task juice-up` publishes and site.json is written against.
   const sakudaOrigin = localOrigin('localhost', 'SAKUDA_PORT', '3001')
   const juiceOrigin = localOrigin('127.0.0.1', 'JUICESHOP_PORT', '4001')
   const templatePath = join(repoRoot, 'targets', 'juice-shop', 'site.json')
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     `juice-seed: ${result.action} site "${site.name}" (${result.siteId}) → ${sakudaOrigin}/sites/${result.siteId}`,
   )
   console.log(
-    `juice-seed: headers Authorization + Cookie and localStorage token hold this run's JWT; re-run after "make juice-down && make juice-up"`,
+    `juice-seed: headers Authorization + Cookie and localStorage token hold this run's JWT; re-run after "task juice-down && task juice-up"`,
   )
 }
 
@@ -82,7 +82,7 @@ function describeError(e: unknown): string {
 main().catch((e: unknown) => {
   console.error(`juice-seed: ${describeError(e)}`)
   console.error(
-    'juice-seed: check that sakuda (make up) and Juice Shop (make juice-up) are running on SAKUDA_PORT / JUICESHOP_PORT',
+    'juice-seed: check that sakuda (task up) and Juice Shop (task juice-up) are running on SAKUDA_PORT / JUICESHOP_PORT',
   )
   process.exitCode = 1
 })
