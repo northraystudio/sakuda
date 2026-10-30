@@ -577,7 +577,7 @@ function handleSubmit() {
         <p class="text-caption-sm text-mute">
           Opens the site in a Chrome on this machine; after you log in, Capture fills the rows below
           from its cookies and storage. Start that Chrome first with
-          <code class="font-mono">make capture-browser</code>.
+          <code class="font-mono">task capture-browser</code>.
         </p>
         <div class="flex flex-wrap gap-3">
           <button

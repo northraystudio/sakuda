@@ -348,7 +348,7 @@ describe('api e2e', () => {
 
     const start = await postJson(`/api/sites/${siteId}/capture/start`, {})
     expect(start.status).toBe(503)
-    expect(JSON.stringify(await start.json())).toContain('make capture-browser')
+    expect(JSON.stringify(await start.json())).toContain('task capture-browser')
 
     const badId = await postJson(`/api/sites/${siteId}/capture`, { targetId: '../json/version' })
     expect(badId.status).toBe(422)

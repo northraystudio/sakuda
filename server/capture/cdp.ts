@@ -4,7 +4,7 @@ import { isIP } from 'node:net'
 /**
  * Minimal Chrome DevTools Protocol client for auth capture (#17), built on
  * Node's global `fetch` and `WebSocket` — no dependency. It drives the host
- * Chrome that `make capture-browser` starts: open a tab on the target, and
+ * Chrome that `task capture-browser` starts: open a tab on the target, and
  * later read that tab's cookies (HttpOnly included) and web storage.
  */
 
@@ -69,7 +69,7 @@ export async function resolveCdpBase(baseUrl: string): Promise<URL> {
 }
 
 const UNREACHABLE_HINT =
-  'start it with `make capture-browser` (Chrome with --remote-debugging-port) and retry'
+  'start it with `task capture-browser` (Chrome with --remote-debugging-port) and retry'
 
 async function cdpHttp(
   base: URL,

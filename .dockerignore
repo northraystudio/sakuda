@@ -9,7 +9,7 @@ tests
 docs
 .superpowers
 .claude
-Makefile
+Taskfile.yml
 docker-compose.yml
 *.md
 !README.md

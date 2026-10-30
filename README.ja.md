@@ -88,20 +88,31 @@ MVP のスコープ: サイト → スキャン → エンジン別レポート�
 ## クイックスタート (Docker)
 
 アプリ、nuclei + テンプレート、ZAP のすべてが 1 つのイメージに入っています。
-`docker-compose.yml` + `Makefile` がコマンドをラップし、ポートやシークレットはすべて
+`docker-compose.yml` + `Taskfile.yml` がコマンドをラップし、ポートやシークレットはすべて
 `.env` から読まれます。
 
+コマンドは [Task](https://taskfile.dev/) v3（`task` コマンド）で実行します（make は使いません）。
+インストール方法は OS ごとに [公式のインストール手順](https://taskfile.dev/docs/installation) を参照してください。
+
 ```bash
-make env      # .env.example から、新しい SAKUDA_ENCRYPTION_KEY 入りの .env を生成
-make build    # イメージをビルド（初回は 10–20 分）
-make up       # 起動 → http://localhost:3001
-make logs     # ログを追う · make restart · make ps
-make down && make up   # sakuda を作り直す（make build 後など）
-make down     # sakuda だけ停止 — データボリュームと Juice Shop はそのまま
-make juice-up && make juice-seed   # 任意: OWASP Juice Shop をすぐスキャンできるデモサイトとして用意（認証込み）
+brew install go-task   # 例: Homebrew（macOS / Linux）
+task --version
 ```
 
-`make help` で全ターゲットを一覧できます。make を使わない場合:
+リポジトリ内のどのディレクトリからでも実行できます（`task` は親ディレクトリの `Taskfile.yml` を探します）。
+引数は `task up SAKUDA_PORT=3005` / `task reset-data CONFIRM=1` のように `名前=値` で渡します。
+
+```bash
+task env      # .env.example から、新しい SAKUDA_ENCRYPTION_KEY 入りの .env を生成
+task build    # イメージをビルド（初回は 10–20 分）
+task up       # 起動 → http://localhost:3001
+task logs     # ログを追う · task restart · task ps
+task down && task up   # sakuda を作り直す（task build 後など）
+task down     # sakuda だけ停止 — データボリュームと Juice Shop はそのまま
+task juice-up && task juice-seed   # 任意: OWASP Juice Shop をすぐスキャンできるデモサイトとして用意（認証込み）
+```
+
+`task` で全タスクを一覧できます。Task を使わない場合:
 
 ```bash
 docker compose up -d sakuda          # 同じこと。.env を読む
@@ -121,11 +132,11 @@ docker run -d --name sakuda -p 127.0.0.1:3001:3000 --shm-size=1g \
 
 | `.env` 変数      | デフォルト  | 内容                                                                                  |
 | ---------------- | ----------- | ------------------------------------------------------------------------------------- |
-| `SAKUDA_PORT`    | `3001`      | sakuda UI/API（`make up`, `make dev`）                                                |
-| `JUICESHOP_PORT` | `4001`      | OWASP Juice Shop のドライラン用ターゲット（`make juice-up`、別 compose プロジェクト） |
+| `SAKUDA_PORT`    | `3001`      | sakuda UI/API（`task up`, `task dev`）                                                |
+| `JUICESHOP_PORT` | `4001`      | OWASP Juice Shop のドライラン用ターゲット（`task juice-up`、別 compose プロジェクト） |
 | `SAKUDA_BIND`    | `127.0.0.1` | 公開ポートのバインドアドレス — ループバックのみに保つこと                             |
 
-呼び出しごとの上書きは `make up SAKUDA_PORT=3005` のように行います。
+呼び出しごとの上書きは `task up SAKUDA_PORT=3005` のように行います。
 
 - **信頼モデル: sakuda に認証はありません。** ポートに到達できる人は誰でもサイト
   （設定済みヘッダを含む）の読み取り・作成・変更ができ、任意のホストに対して
@@ -139,7 +150,7 @@ docker run -d --name sakuda -p 127.0.0.1:3001:3000 --shm-size=1g \
   ときのホスト名を `SAKUDA_ALLOWED_HOSTS` に列挙してください（例:
   `sakuda.lan,192.168.1.5`）。設定している間は起動時に警告が出ます。この確認は
   無効にできず、`/mcp` はどちらの場合もループバックのみです。この設定が効くのは
-  ビルドしたアプリ（`make up`）です。`pnpm dev` では Vite 自身のホストの確認が
+  ビルドしたアプリ（`task up`）です。`pnpm dev` では Vite 自身のホストの確認が
   先に効くため、ループバック以外の名前は拒否されます。
 - **鍵を保管すること。** `SAKUDA_ENCRYPTION_KEY` は保存されたリクエストヘッダ
   （Cookie / Bearer など）を保管時に暗号化します。失うとそれらのヘッダは永久に
@@ -190,7 +201,7 @@ docker run -d --name sakuda -p 127.0.0.1:3001:3000 --shm-size=1g \
 | `SAKUDA_ZAP_LOCALHOST_ALIAS`              | `host.docker.internal`                                                    | 同上、ZAP 専用（未設定なら `SAKUDA_LOCALHOST_ALIAS` にフォールバック）。ZAP の Firefox はこのホストを secure context として扱う。            |
 | `SAKUDA_ENGINE_GRACE_MINUTES`             | `10`                                                                      | 孤立したエンジンプロセスを失敗扱いにするまでの猶予時間。                                                                                     |
 | `SAKUDA_JOB_RUNNER`                       | `on`                                                                      | `off` でインプロセスのスキャンキューを無効化（テスト時など）。                                                                               |
-| `SAKUDA_CAPTURE_CDP_URL`                  | `http://127.0.0.1:9222`（Docker では `http://host.docker.internal:9222`） | **Log in with browser** が使うホストの Chrome の DevTools エンドポイント（`make capture-browser`）。環境変数からのみ読む。                   |
+| `SAKUDA_CAPTURE_CDP_URL`                  | `http://127.0.0.1:9222`（Docker では `http://host.docker.internal:9222`） | **Log in with browser** が使うホストの Chrome の DevTools エンドポイント（`task capture-browser`）。環境変数からのみ読む。                   |
 | `SAKUDA_ALLOWED_HOSTS`                    | _(未設定)_                                                                | ループバックのほかに `/api/**` が `Host` / `Origin` で受け付けるホスト名（カンマ区切り、ポートなし）。上の信頼モデルを参照。                 |
 | `LOG_LEVEL`                               | `info`                                                                    | `debug` \| `info` \| `warn` \| `error`。                                                                                                     |
 
@@ -201,7 +212,7 @@ docker run -d --name sakuda -p 127.0.0.1:3001:3000 --shm-size=1g \
 
 ```bash
 pnpm install
-make env                    # 新しい鍵入りの .env（または: cp .env.example .env && pnpm keygen）
+task env                    # 新しい鍵入りの .env（または: cp .env.example .env && pnpm keygen）
 ```
 
 開発時、nuclei・katana・dalfox・httpx はネイティブバイナリとして、ZAP は Docker
@@ -238,21 +249,21 @@ make env                    # 新しい鍵入りの .env（または: cp .env.ex
 続いて:
 
 ```bash
-make dev            # SAKUDA_PORT で nuxt dev → http://localhost:3001
-make test           # ユニット + コンポーネントテスト
-make e2e            # API の e2e テスト
-make lint · make typecheck · make check (3 つすべて)
-make juice-up       # JUICESHOP_PORT でスキャンターゲットとして Juice Shop を起動 · make juice-down
-make juice-seed     # ログイン済みデモサイトとして sakuda に登録（冪等。juice-down/up 後は再実行）
+task dev            # SAKUDA_PORT で nuxt dev → http://localhost:3001
+task test           # ユニット + コンポーネントテスト
+task e2e            # API の e2e テスト
+task lint · task typecheck · task check (3 つすべて)
+task juice-up       # JUICESHOP_PORT でスキャンターゲットとして Juice Shop を起動 · task juice-down
+task juice-seed     # ログイン済みデモサイトとして sakuda に登録（冪等。juice-down/up 後は再実行）
 ```
 
 Juice Shop は別の compose プロジェクト（`targets/juice-shop/compose.yml`、
-プロジェクト名 `sakuda-juice-shop`）で、同じ `.env` を読むため、`make down` /
-`make reset-data` が触ることはありません。make を使わない場合:
+プロジェクト名 `sakuda-juice-shop`）で、同じ `.env` を読むため、`task down` /
+`task reset-data` が触ることはありません。Task を使わない場合:
 `docker compose --env-file .env -f targets/juice-shop/compose.yml up -d`。
-コンテナを作り直す（`make juice-down`）とアカウントとトークンはリセットされます。
+コンテナを作り直す（`task juice-down`）とアカウントとトークンはリセットされます。
 Juice Shop が `docker-compose.yml` に入っていたチェックアウトから更新する場合は、
-一度 `docker rm -f sakuda-juice-shop` で古いコンテナを消してから `make juice-up`
+一度 `docker rm -f sakuda-juice-shop` で古いコンテナを消してから `task juice-up`
 してください。
 
 （内部的には `pnpm dev --port 3001`、`pnpm test`、`pnpm test:e2e`、`pnpm run lint`、
@@ -424,7 +435,7 @@ ZAP frontend）のたびに、実行中だけ 0600 で書かれ終了後に削�
 Juice Shop なら `POST /rest/user/login` から得られる `localStorage token = <JWT>`
 と `sessionStorage bid = <basket id>` です。
 
-**コピペせずブラウザでログインする。** `make capture-browser` で、使い捨てのプロファイル・
+**コピペせずブラウザでログインする。** `task capture-browser` で、使い捨てのプロファイル・
 DevTools（`127.0.0.1:9222`）付きの Chrome をホストで起動し、**Edit site →
 Authentication** で **Log in with browser** を押すと、その Chrome でサイトが開きます。
 いつもどおりログインして **Capture** を押すと、そのタブからフォームが埋まります —
