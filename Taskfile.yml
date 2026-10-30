@@ -51,7 +51,8 @@ tasks:
         if [ -f .env ]; then echo ".env exists — leaving it alone"; else
           cp .env.example .env
           key="$(pnpm -s keygen)"
-          sed -i '' "s|^SAKUDA_ENCRYPTION_KEY=.*|SAKUDA_ENCRYPTION_KEY=$key|" .env
+          # -i.bak (not -i '') works with both BSD (macOS) and GNU sed
+          sed -i.bak "s|^SAKUDA_ENCRYPTION_KEY=.*|SAKUDA_ENCRYPTION_KEY=$key|" .env && rm -f .env.bak
           echo "wrote .env with a fresh SAKUDA_ENCRYPTION_KEY — keep it safe"
         fi
 
@@ -102,7 +103,12 @@ tasks:
     desc: Open the UI in the browser
     env: *ports
     cmds:
-      - open "http://localhost:$SAKUDA_PORT"
+      - |
+        if [ "$(uname)" = Darwin ]; then
+          open "http://localhost:$SAKUDA_PORT"
+        else
+          xdg-open "http://localhost:$SAKUDA_PORT"
+        fi
 
   capture-browser:
     desc: Start a Chrome that sakuda can drive for "Log in with browser" (Edit site → Authentication)
