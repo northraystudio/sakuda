@@ -33,6 +33,7 @@ function siteFixture(overrides: Partial<SitePublic> = {}): SitePublic {
     nonLocalConfirmed: true,
     allowMutatingRequests: false,
     nucleiEnabledRiskTags: [],
+    nucleiTags: [],
     headerNames: [],
     browserStorageNames: [],
     requestShapes: {},

@@ -79,6 +79,7 @@ export function scanDetailFixture(overrides: Partial<ScanDetail> = {}): ScanDeta
       nonLocalConfirmed: true,
       allowMutatingRequests: false,
       nucleiEnabledRiskTags: [],
+      nucleiTags: [],
       headerNames: [],
       browserStorageNames: [],
       requestShapes: {},

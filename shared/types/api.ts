@@ -5,6 +5,22 @@ import type { TargetMethod } from '../utils/nucleiPaths'
 export type Engine = 'nuclei' | 'zap-api' | 'zap-fe' | 'dalfox' | 'boundary'
 export const RISK_TAGS = ['dos', 'fuzz', 'intrusive'] as const
 export type RiskTag = (typeof RISK_TAGS)[number]
+/** nuclei template tags a site may narrow its scan to (#52). Every value
+ * yields findings under the fixed `-severity critical,high,medium`: tags whose
+ * templates are almost all `info` (`tech`, `panel`) are left out on purpose. */
+export const NUCLEI_TAG_CHOICES = [
+  'xss',
+  'injection',
+  'sqli',
+  'ssrf',
+  'lfi',
+  'exposure',
+  'config',
+  'misconfig',
+  'auth-bypass',
+  'cve',
+] as const
+export type NucleiTag = (typeof NUCLEI_TAG_CHOICES)[number]
 export type Severity = 'critical' | 'high' | 'medium'
 export type SeverityLevel = Severity | 'low' | 'info'
 export interface SeverityCounts {
@@ -52,6 +68,9 @@ export interface SitePublic {
   /** nuclei risk-template groups the user opted this site into; effective only
    * with active checks on (see server/domain/activeScan). */
   nucleiEnabledRiskTags: RiskTag[]
+  /** Template tags the nuclei scan is narrowed to; [] = all (the built-in
+   * tag list, see server/engines/nuclei/args `nucleiTagsFor`). */
+  nucleiTags: NucleiTag[]
   headerNames: string[]
   /** kind + name of each injected browser-storage item; values are write-only. */
   browserStorageNames: BrowserStorageName[]

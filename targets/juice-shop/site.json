@@ -17,6 +17,7 @@
   "nonLocalConfirmed": false,
   "allowMutatingRequests": true,
   "nucleiEnabledRiskTags": ["fuzz", "intrusive", "dos"],
+  "nucleiTags": [],
   "requestShapes": {
     "POST|front|/api/Complaints/": {
       "contentType": "application/json",

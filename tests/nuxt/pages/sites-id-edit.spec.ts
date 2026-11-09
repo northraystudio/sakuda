@@ -23,6 +23,7 @@ const site: SitePublic = {
   nonLocalConfirmed: true,
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
+  nucleiTags: [],
   headerNames: [],
   browserStorageNames: [],
   requestShapes: {},

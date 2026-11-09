@@ -21,7 +21,12 @@ import { CreateScanBodySchema } from '#shared/schemas/scan'
 import { SiteInputSchema, SiteUpdateSchema, type SiteUpdateInput } from '#shared/schemas/site'
 import { AddTargetsBodySchema } from '#shared/schemas/targets'
 import { TriageInputSchema } from '#shared/schemas/triage'
-import type { FindingView, Severity, SitePublic } from '#shared/types/api'
+import {
+  NUCLEI_TAG_CHOICES,
+  type FindingView,
+  type Severity,
+  type SitePublic,
+} from '#shared/types/api'
 import { ENGINES } from '#shared/utils/engines'
 import { isLocalUrl } from '#shared/utils/localHost'
 import { findExpiryProblems, formatExpiryWarning } from '#shared/utils/secretExpiry'
@@ -122,6 +127,7 @@ export const AGENT_SITE_FIELDS = {
   nucleiRateLimit: z.number(),
   nucleiMaxMinutes: z.number().nullable(),
   nucleiConcurrency: z.number().nullable(),
+  nucleiTags: z.array(z.string()),
   zapApiMaxMinutes: z.number(),
   zapFeSpiderMaxMinutes: z.number(),
   headers: z.array(z.strictObject({ name: z.string(), value: z.string().optional() })),
@@ -132,7 +138,9 @@ export const AGENT_SITE_FIELDS = {
 
 const SITE_FIELDS_NOTE =
   'Same validation as the sakuda UI. Header and browser-storage values are write-only: ' +
-  'the result lists them by name only. Confirming a non-local target ' +
+  'the result lists them by name only. nucleiTags narrows the nuclei scan to the ' +
+  `listed template tags (${NUCLEI_TAG_CHOICES.join(', ')}); [] runs all. ` +
+  'Confirming a non-local target ' +
   '(nonLocalConfirmed) and enabling active checks (allowMutatingRequests, ' +
   'nucleiEnabledRiskTags) can only be done in the sakuda UI.'
 
@@ -171,6 +179,7 @@ function currentSettings(site: SitePublic): SiteUpdateInput {
     nonLocalConfirmed: site.nonLocalConfirmed,
     allowMutatingRequests: site.allowMutatingRequests,
     nucleiEnabledRiskTags: site.nucleiEnabledRiskTags,
+    nucleiTags: site.nucleiTags,
   }
 }
 

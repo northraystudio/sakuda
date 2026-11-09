@@ -31,8 +31,7 @@ import {
   buildNucleiDastArgs,
   buildNucleiOpenapiArgs,
   fullSignatureExcludeTags,
-  nucleiTagsFor,
-  NUCLEI_PRIORITY_SIGNATURE_TAGS,
+  nucleiTagPlan,
 } from './args'
 import { probeTargets, type HttpxProbeMeta } from './httpx'
 import { oastServerLabel, probeOastServer, withNucleiConfig, type OastStatus } from './oast'
@@ -159,7 +158,8 @@ async function runNucleiPhases(
     )
 
   const riskTags = effectiveRiskTags(site)
-  const tags = [...nucleiTagsFor(site.headers.length > 0), ...riskExtraTags(riskTags)]
+  const tagPlan = nucleiTagPlan(site.headers.length > 0, site.nucleiTags, riskExtraTags(riskTags))
+  const { tags, priorityTags } = tagPlan
   const parameterizedUrlCount = countParameterizedUrls(getUrls)
   const oast = env.nuclei.oast
   const oastServer = oastServerLabel(oast)
@@ -173,6 +173,8 @@ async function runNucleiPhases(
       excludedCount: excluded.length,
       openapiDocCount: docs.length,
       tags,
+      selectedTags: site.nucleiTags,
+      priorityTags,
       activeScan,
       riskTags,
       parameterizedUrlCount,
@@ -308,8 +310,11 @@ async function runNucleiPhases(
   const runSignature = liveGetUrls.length > 0
   // The signature phase is two nuclei runs (#3): a priority pass over the
   // high-signal exposure/config/misconfig tags, then the full `http` tree with
-  // those tags excluded. Both are reserved a floor.
-  laterPhases = (runDast ? 1 : 0) + (runSignature ? 2 : 0) + docs.length
+  // those tags excluded. Both are reserved a floor. A site's tag selection
+  // (#52) can leave either pass with nothing to run; such a pass is skipped.
+  const runPriority = runSignature && priorityTags.length > 0
+  const runFull = runSignature && tagPlan.runFullSignature
+  laterPhases = (runDast ? 1 : 0) + (runPriority ? 1 : 0) + (runFull ? 1 : 0) + docs.length
 
   // --- phase 1a: GET URL list, DAST templates (active checks only) --------
   // Runs FIRST: the DAST tree is ~20 templates and finishes in well under a
@@ -362,7 +367,7 @@ async function runNucleiPhases(
   // exposed metrics / config / misconfiguration detections were routinely in
   // the unrun majority (#3). Run them first as a small, budgeted pass; the
   // full pass below excludes these tags so nothing is scanned twice.
-  if (runSignature && !anAborted) {
+  if (runPriority && !anAborted) {
     laterPhases -= 1
     if (remaining() > 0) {
       const outputFile = join(workDir, 'exposure-findings.jsonl')
@@ -374,7 +379,7 @@ async function runNucleiPhases(
         outputFile,
         rateLimit: site.nucleiRateLimit,
         concurrency: limits.concurrency,
-        tags: NUCLEI_PRIORITY_SIGNATURE_TAGS,
+        tags: priorityTags,
         headersConfigFile: nucleiConfigFile,
         oast,
         excludeTags: riskExcludeTags(riskTags),
@@ -402,7 +407,7 @@ async function runNucleiPhases(
   // Same argv in both modes except the tag lists; never `-dast`, which
   // would make nuclei run DAST templates only and drop every signature
   // template (#65). Excludes the priority tags already run above.
-  if (runSignature && !anAborted) {
+  if (runFull && !anAborted) {
     laterPhases -= 1
     if (remaining() <= 0) {
       warnings.push(
@@ -422,7 +427,7 @@ async function runNucleiPhases(
         tags,
         headersConfigFile: nucleiConfigFile,
         oast,
-        excludeTags: fullSignatureExcludeTags(riskExcludeTags(riskTags)),
+        excludeTags: fullSignatureExcludeTags(riskExcludeTags(riskTags), priorityTags),
       })
       const phase = await runNucleiPhase({
         label: `nuclei:${scanId}`,
@@ -554,6 +559,7 @@ async function runNucleiPhases(
       ...(Object.keys(skippedNoFuzzSeed).length > 0 ? { skippedNoFuzzSeed } : {}),
       ...(docs.length > 0 ? { openapiDocCount: docs.length, openapiDocsRun } : {}),
       tags,
+      ...(site.nucleiTags.length > 0 ? { selectedTags: site.nucleiTags } : {}),
       rateLimit: site.nucleiRateLimit,
       concurrency: limits.concurrency,
       templatesDir: env.nuclei.templatesDir,

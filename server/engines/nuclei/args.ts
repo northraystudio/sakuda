@@ -48,14 +48,56 @@ export const NUCLEI_RISK_EXCLUDE_TAGS = ['dos', 'fuzz', 'intrusive']
 export const NUCLEI_PRIORITY_SIGNATURE_TAGS = ['exposure', 'config', 'misconfig']
 
 /** The exclude-tags for the full signature pass: the risk groups plus the
- * priority tags already covered by the priority pass, so the two passes never
- * run the same template twice. Pure. */
-export function fullSignatureExcludeTags(riskExcludeTags: string[]): string[] {
-  return [...new Set([...riskExcludeTags, ...NUCLEI_PRIORITY_SIGNATURE_TAGS])]
+ * priority tags the priority pass actually ran, so the two passes never run
+ * the same template twice — and a template is never dropped by both. Pure. */
+export function fullSignatureExcludeTags(
+  riskExcludeTags: string[],
+  priorityTags: readonly string[] = NUCLEI_PRIORITY_SIGNATURE_TAGS,
+): string[] {
+  return [...new Set([...riskExcludeTags, ...priorityTags])]
 }
 
-export function nucleiTagsFor(hasHeaders: boolean): string[] {
+/**
+ * The base `-tags` list. A site that selected tags (#52) uses exactly those;
+ * an empty selection means "all", the built-in list (plus `auth-bypass` when
+ * the site sends auth headers).
+ */
+export function nucleiTagsFor(hasHeaders: boolean, selected: readonly string[] = []): string[] {
+  if (selected.length > 0) return [...selected]
   return hasHeaders ? [...NUCLEI_BASE_TAGS, 'auth-bypass'] : [...NUCLEI_BASE_TAGS]
+}
+
+export interface NucleiTagPlan {
+  /** `-tags` of the DAST GET phase and the full signature pass. */
+  tags: string[]
+  /** `-tags` of the priority pass; empty → the pass is skipped. */
+  priorityTags: string[]
+  /** False when every selected tag is a priority tag, so the full pass would
+   * have nothing left to run once they are excluded. */
+  runFullSignature: boolean
+}
+
+/**
+ * Splits a site's tag selection across the GET phases (#52). With no
+ * selection the result is today's fixed plan: the built-in list everywhere
+ * and all three priority tags in the priority pass. With a selection, the
+ * priority pass gets only the selected priority tags and the full pass only
+ * runs when a non-priority tag is left. The risk opt-in tags
+ * (`riskExtraTags`) are added either way. Pure.
+ */
+export function nucleiTagPlan(
+  hasHeaders: boolean,
+  selected: readonly string[],
+  riskExtraTags: readonly string[],
+): NucleiTagPlan {
+  const tags = [...new Set([...nucleiTagsFor(hasHeaders, selected), ...riskExtraTags])]
+  if (selected.length === 0)
+    return { tags, priorityTags: [...NUCLEI_PRIORITY_SIGNATURE_TAGS], runFullSignature: true }
+  return {
+    tags,
+    priorityTags: NUCLEI_PRIORITY_SIGNATURE_TAGS.filter((t) => selected.includes(t)),
+    runFullSignature: selected.some((t) => !NUCLEI_PRIORITY_SIGNATURE_TAGS.includes(t)),
+  }
 }
 
 /**

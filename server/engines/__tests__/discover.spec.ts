@@ -25,6 +25,7 @@ const site: SiteWithHeaders = {
   nonLocalConfirmed: false,
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
+  nucleiTags: [],
   headerNames: [],
   browserStorageNames: [],
   requiresConfirmation: false,

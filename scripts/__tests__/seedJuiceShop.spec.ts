@@ -26,6 +26,7 @@ const template: SiteTemplate = {
   nonLocalConfirmed: false,
   allowMutatingRequests: true,
   nucleiEnabledRiskTags: ['fuzz'],
+  nucleiTags: [],
   requestShapes: {
     'POST|front|/api/Users/': {
       contentType: 'application/json',

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { RISK_TAGS } from '../types/api'
+import { NUCLEI_TAG_CHOICES, RISK_TAGS } from '../types/api'
 import { BrowserStoragePatchesSchema, BrowserStorageSchema } from './browserStorage'
 import { HeaderPatchesSchema, HeadersSchema } from './headers'
 import { siteRequiresConfirmation } from '../utils/localHost'
@@ -51,6 +51,16 @@ const SiteFieldsSchema = z.object({
   /** nuclei risk-template groups to un-exclude, effective only under
    * allowMutatingRequests (see server/domain/activeScan). */
   nucleiEnabledRiskTags: z.array(z.enum(RISK_TAGS)).default([]),
+  /** Template tags to narrow the nuclei scan to; [] = all (#52). */
+  nucleiTags: z
+    .array(
+      z.enum(NUCLEI_TAG_CHOICES, {
+        error: (iss) =>
+          `unknown nuclei tag ${JSON.stringify(iss.input)} (allowed: ${NUCLEI_TAG_CHOICES.join(', ')})`,
+      }),
+    )
+    .max(NUCLEI_TAG_CHOICES.length)
+    .default([]),
   headers: HeadersSchema.optional(),
   /** Injected into ZAP's browser before the Ajax spider runs (SPA login state). */
   browserStorage: BrowserStorageSchema.optional(),

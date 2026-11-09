@@ -38,6 +38,7 @@ function scanFixture(overrides: Partial<ScanDetail> = {}): ScanDetail {
       nonLocalConfirmed: true,
       allowMutatingRequests: false,
       nucleiEnabledRiskTags: [],
+      nucleiTags: [],
       headerNames: [],
       browserStorageNames: [],
       requestShapes: {},

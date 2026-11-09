@@ -24,6 +24,7 @@ function siteFixture(overrides: Partial<SiteListItem> = {}): SiteListItem {
     nonLocalConfirmed: true,
     allowMutatingRequests: false,
     nucleiEnabledRiskTags: [],
+    nucleiTags: [],
     headerNames: [],
     browserStorageNames: [],
     requestShapes: {},

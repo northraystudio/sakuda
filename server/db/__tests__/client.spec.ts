@@ -24,6 +24,7 @@ function siteRow(id: string) {
     nonLocalConfirmed: false,
     allowMutatingRequests: false,
     nucleiEnabledRiskTags: [],
+    nucleiTags: [],
     headersEnc: null,
     headerNames: [],
     browserStorageNames: [],

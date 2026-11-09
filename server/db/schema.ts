@@ -3,6 +3,7 @@ import type { BrowserStorageName } from '#shared/schemas/browserStorage'
 import type {
   DiscoveredUrl,
   Engine,
+  NucleiTag,
   RequestShape,
   RiskTag,
   SeverityCounts,
@@ -35,6 +36,7 @@ export const sites = sqliteTable('sites', {
     .$type<RiskTag[]>()
     .notNull()
     .default([]),
+  nucleiTags: text('nuclei_tags', { mode: 'json' }).$type<NucleiTag[]>().notNull().default([]),
   headersEnc: blob('headers_enc', { mode: 'buffer' }),
   headerNames: text('header_names', { mode: 'json' }).$type<string[]>().notNull(),
   browserStorageEnc: blob('browser_storage_enc', { mode: 'buffer' }),

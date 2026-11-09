@@ -125,6 +125,7 @@ function baseSite(overrides: Partial<SiteWithHeaders> = {}): SiteWithHeaders {
     nonLocalConfirmed: false,
     allowMutatingRequests: true,
     nucleiEnabledRiskTags: [],
+    nucleiTags: [],
     headerNames: [],
     browserStorageNames: [],
     requiresConfirmation: false,

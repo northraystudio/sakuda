@@ -27,6 +27,7 @@ function site(id: string, name: string) {
       nonLocalConfirmed: false,
       allowMutatingRequests: false,
       nucleiEnabledRiskTags: [],
+      nucleiTags: [],
       headersEnc: null,
       headerNames: [],
       browserStorageEnc: null,
