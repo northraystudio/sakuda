@@ -27,7 +27,7 @@ export type RiskTagSite = ActiveScanSite & Pick<SitePublic, 'nucleiEnabledRiskTa
 
 /**
  * Extra `-tags` each risk toggle must add for the templates it unlocks to
- * actually load. Measured against nuclei-templates v10.4.8: dropping a tag
+ * actually load. Measured against nuclei-templates v10.4.8, re-checked on v10.5.1: dropping a tag
  * from `-exclude-tags` alone is not enough when the templates it unlocks also
  * sit outside the base `-tags` allow-list (see {@link riskExcludeTags}).
  *

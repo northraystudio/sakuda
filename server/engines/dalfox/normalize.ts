@@ -4,7 +4,7 @@ import type { SeverityCounts, SeverityLevel } from '#shared/types/api'
 import type { NewFinding } from '../types'
 
 /**
- * The subset of a dalfox JSON finding sakuda reads (dalfox v3.2.2 `-f json`,
+ * The subset of a dalfox JSON finding sakuda reads (dalfox v3.2.2–v3.3.0 `-f json`,
  * one object per element of the top-level `findings` array). `data` carries
  * the full URL the payload landed in — dalfox has no separate `url` key — and
  * `param` is the parameter name (`-` for an AST/DOM flow with no request

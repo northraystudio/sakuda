@@ -6,22 +6,24 @@
 #
 # Versions verified before pinning (see task-15-report.md for how):
 #   - ZAP_VERSION: ghcr.io/zaproxy/zaproxy:2.17.0 (manifest confirmed)
-#   - NODE_VERSION: 22.23.2 (latest Node 22 "Jod" LTS, nodejs.org/dist/index.json)
+#   - NODE_VERSION: 22.23.4 (latest Node 22 "Jod" LTS, security release, nodejs.org/dist/index.json)
 #   - NUCLEI_VERSION: 3.11.1 (github.com/projectdiscovery/nuclei latest release)
-#   - NUCLEI_TEMPLATES_TAG: v10.4.8 (github.com/projectdiscovery/nuclei-templates latest release)
-#   - KATANA_VERSION: 1.7.0 (github.com/projectdiscovery/katana latest release)
-#   - DALFOX_VERSION: 3.2.2 (github.com/hahwul/dalfox latest release)
+#   - NUCLEI_TEMPLATES_TAG: v10.5.1 (github.com/projectdiscovery/nuclei-templates latest release)
+#   - KATANA_VERSION: 1.7.0 (1.8.0 is out, but its release binary is built with Go 1.26.0 — older than
+#     1.7.0's Go 1.26.5 — and re-adds stdlib advisories; held until a patched build, see #61)
+#   - DALFOX_VERSION: 3.3.0 (github.com/hahwul/dalfox latest release)
 #   - HTTPX_VERSION: 1.12.0 (github.com/projectdiscovery/httpx latest release; ≥1.12 runs its
 #     page-type classifier — and downloads its model — only with `-kb`, which sakuda never passes)
-#   - ASCANRULES_BETA_VERSION: 64 (zap-extensions ascanrulesBeta-v64, requires ZAP>=2.17.0)
+#   - ASCANRULES_BETA_VERSION: 67 (zap-extensions ascanrulesBeta-v67, requires ZAP>=2.17.0 and
+#     commonlib>=1.43.0 — the ZAP 2.17.0 image bundles commonlib 1.43.0)
 ARG ZAP_VERSION=2.17.0
-ARG NODE_VERSION=22.23.2
+ARG NODE_VERSION=22.23.4
 ARG NUCLEI_VERSION=3.11.1
-ARG NUCLEI_TEMPLATES_TAG=v10.4.8
+ARG NUCLEI_TEMPLATES_TAG=v10.5.1
 ARG KATANA_VERSION=1.7.0
-ARG DALFOX_VERSION=3.2.2
+ARG DALFOX_VERSION=3.3.0
 ARG HTTPX_VERSION=1.12.0
-ARG ASCANRULES_BETA_VERSION=64
+ARG ASCANRULES_BETA_VERSION=67
 
 FROM node:${NODE_VERSION}-bookworm-slim AS build
 WORKDIR /app
@@ -93,9 +95,9 @@ RUN set -eux; \
 # startup without any runtime marketplace fetch (offline / reproducible, per
 # ADR-0002). ZAP add-on releases ship no checksums file, so the hash is pinned
 # here the same way the Node tarball's is.
-ARG ASCANRULES_BETA_SHA256=473987bfdede353167483d69ab4725b2509dd3c9a4b3426708dce1b26802e414
+ARG ASCANRULES_BETA_SHA256=81e84d592b1f7ad803470bcc8d8b659d4f7e21370546a482b606207e57a7db69
 RUN set -eux; \
-    # ascanrulesBeta-v64 requires ZAP >= 2.17.0; fail the build fast if
+    # ascanrulesBeta-v67 requires ZAP >= 2.17.0; fail the build fast if
     # ZAP_VERSION was overridden to an older base rather than shipping an image
     # whose ZAP cannot load the add-on.
     dpkg --compare-versions "${ZAP_VERSION}" ge "2.17.0"; \

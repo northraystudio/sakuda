@@ -30,6 +30,30 @@ describe('parseDalfoxReport', () => {
     expect(r.findings).toHaveLength(1)
   })
 
+  it('parses a dalfox 3.3 finding that carries the newer `filter` fingerprint', () => {
+    // dalfox 3.3.0 added a per-parameter `filter` object to every finding and
+    // a `method` to `target_summary`; sakuda ignores both but must still parse.
+    const r = parseDalfoxReport(
+      JSON.stringify({
+        meta: {
+          dalfox_version: '3.3.0',
+          target_summary: [{ url: 'http://x/?q=', method: 'GET', status: 'findings' }],
+        },
+        findings: [
+          {
+            type: 'V',
+            data: 'http://x/?q=%3Csvg%3E',
+            param: 'q',
+            filter: { allowed: ['<', '>'], blocked: ['"'], escaped: ["'"] },
+          },
+        ],
+      }),
+    )
+    expect(r.findings).toHaveLength(1)
+    expect(r.findings[0]).toMatchObject({ type: 'V', param: 'q' })
+    expect(r.invalid).toBe(0)
+  })
+
   it('returns an empty report (not a throw) for malformed JSON', () => {
     expect(parseDalfoxReport('not json').findings).toEqual([])
   })
