@@ -74,6 +74,11 @@ describe('nucleiTagPlan (#52)', () => {
     expect(nucleiTagPlan(false, ['exposure'], []).runFullSignature).toBe(false)
   })
 
+  it('keeps the full pass on when risk extra tags remain beside priority-only selection', () => {
+    // fuzz opted in: cmdi / rce must still run in the signature phase
+    expect(nucleiTagPlan(false, ['exposure'], ['cmdi', 'rce']).runFullSignature).toBe(true)
+  })
+
   it('turns the priority pass off when no priority tag is selected', () => {
     expect(nucleiTagPlan(false, ['cve'], []).priorityTags).toEqual([])
   })

@@ -72,8 +72,8 @@ export interface NucleiTagPlan {
   tags: string[]
   /** `-tags` of the priority pass; empty → the pass is skipped. */
   priorityTags: string[]
-  /** False when every selected tag is a priority tag, so the full pass would
-   * have nothing left to run once they are excluded. */
+  /** False when every tag (selection plus risk extras) is a priority tag, so
+   * the full pass would have nothing left to run once they are excluded. */
   runFullSignature: boolean
 }
 
@@ -96,7 +96,8 @@ export function nucleiTagPlan(
   return {
     tags,
     priorityTags: NUCLEI_PRIORITY_SIGNATURE_TAGS.filter((t) => selected.includes(t)),
-    runFullSignature: selected.some((t) => !NUCLEI_PRIORITY_SIGNATURE_TAGS.includes(t)),
+    // From `tags`, not `selected`: risk extra tags (cmdi / rce / dos) also need the full pass.
+    runFullSignature: tags.some((t) => !NUCLEI_PRIORITY_SIGNATURE_TAGS.includes(t)),
   }
 }
 
