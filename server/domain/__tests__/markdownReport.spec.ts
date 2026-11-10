@@ -21,6 +21,7 @@ const siteSnapshot: SiteSnapshot = {
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
   nucleiTags: [],
+  openapiAllowedOrigins: [],
   headerNames: ['Authorization'],
   browserStorageNames: [],
   requiresConfirmation: false,

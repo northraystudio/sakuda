@@ -43,6 +43,7 @@ const SITE_FIELD_KEYS = [
   'allowMutatingRequests',
   'nucleiEnabledRiskTags',
   'nucleiTags',
+  'openapiAllowedOrigins',
 ] as const satisfies readonly (keyof SiteTemplate)[]
 
 type SiteFields = Pick<SiteTemplate, (typeof SITE_FIELD_KEYS)[number]>

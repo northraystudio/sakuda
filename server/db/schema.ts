@@ -37,6 +37,10 @@ export const sites = sqliteTable('sites', {
     .notNull()
     .default([]),
   nucleiTags: text('nuclei_tags', { mode: 'json' }).$type<NucleiTag[]>().notNull().default([]),
+  openapiAllowedOrigins: text('openapi_allowed_origins', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
   headersEnc: blob('headers_enc', { mode: 'buffer' }),
   headerNames: text('header_names', { mode: 'json' }).$type<string[]>().notNull(),
   browserStorageEnc: blob('browser_storage_enc', { mode: 'buffer' }),

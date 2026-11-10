@@ -26,6 +26,7 @@ const site: SiteWithHeaders = {
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
   nucleiTags: [],
+  openapiAllowedOrigins: [],
   headerNames: [],
   browserStorageNames: [],
   requiresConfirmation: false,

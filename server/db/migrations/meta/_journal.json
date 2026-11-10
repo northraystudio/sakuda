@@ -85,6 +85,13 @@
       "when": 1794241950548,
       "tag": "0011_nuclei_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794305007357,
+      "tag": "0012_openapi_allowed_origins",
+      "breakpoints": true
     }
   ]
 }

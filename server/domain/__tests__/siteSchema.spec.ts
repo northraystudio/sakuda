@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { SiteInputSchema, SiteUpdateSchema } from '#shared/schemas/site'
+import {
+  OPENAPI_ALLOWED_ORIGINS_MAX,
+  SiteInputSchema,
+  SiteUpdateSchema,
+} from '#shared/schemas/site'
 
 const minimal = { name: 'Site', frontBaseUrl: 'http://localhost:3000' }
 
@@ -31,6 +35,7 @@ describe('SiteInputSchema', () => {
       allowMutatingRequests: false,
       nucleiEnabledRiskTags: [],
       nucleiTags: [],
+      openapiAllowedOrigins: [],
     })
   })
 
@@ -90,6 +95,43 @@ describe('SiteInputSchema', () => {
     const issues = issuesFor({ ...minimal, nucleiTags: value })
     const issue = issues.find((i) => i.path.join('.') === path)
     expect(issue?.message).toMatch(message)
+  })
+
+  it('normalizes openapiAllowedOrigins to origins and drops duplicates (#27)', () => {
+    const ok = SiteInputSchema.safeParse({
+      ...minimal,
+      openapiAllowedOrigins: [
+        'https://Docs.Example.com/',
+        'https://docs.example.com:443',
+        'http://cdn.example.org:8080',
+      ],
+    })
+    expect(ok.success && ok.data.openapiAllowedOrigins).toEqual([
+      'https://docs.example.com',
+      'http://cdn.example.org:8080',
+    ])
+  })
+
+  it.each([
+    ['https://docs.example.com/openapi.json', /origin only/],
+    ['https://docs.example.com?x=1', /origin only/],
+    ['https://user:pw@docs.example.com', /origin only/],
+    ['ftp://docs.example.com', /http\(s\)/],
+    ['docs.example.com', /http\(s\)/],
+  ])('rejects openapiAllowedOrigins entry %j (#27)', (value, message) => {
+    const issue = issuesFor({ ...minimal, openapiAllowedOrigins: [value] }).find(
+      (i) => i.path.join('.') === 'openapiAllowedOrigins.0',
+    )
+    expect(issue?.message).toMatch(message)
+  })
+
+  it('caps openapiAllowedOrigins at OPENAPI_ALLOWED_ORIGINS_MAX (#27)', () => {
+    const origins = Array.from(
+      { length: OPENAPI_ALLOWED_ORIGINS_MAX + 1 },
+      (_, i) => `https://h${i}.example.com`,
+    )
+    const issues = issuesFor({ ...minimal, openapiAllowedOrigins: origins })
+    expect(issues.some((i) => i.path.join('.') === 'openapiAllowedOrigins')).toBe(true)
   })
 
   it('maps empty string to null for optional URLs', () => {

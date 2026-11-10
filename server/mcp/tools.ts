@@ -100,12 +100,14 @@ function isOnConfirmedOrigin(url: string, confirmed: (string | null)[]): boolean
 }
 
 /** Site settings only the user may change, in the UI: confirming a non-local
- * target and opting in to active (injecting) checks. MCP writes cannot set
- * them; a new site starts with them off and an update keeps the stored ones. */
+ * target, opting in to active (injecting) checks, and the extra origins an
+ * OpenAPI URL may live on. MCP writes cannot set them; a new site starts with
+ * them off/empty and an update keeps the stored ones. */
 const UI_ONLY_DEFAULTS = {
   nonLocalConfirmed: false,
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
+  openapiAllowedOrigins: [],
 } satisfies Partial<SiteUpdateInput>
 
 /** The site fields an agent may set: the edit form's fields minus the
@@ -142,7 +144,8 @@ const SITE_FIELDS_NOTE =
   `listed template tags (${NUCLEI_TAG_CHOICES.join(', ')}); [] runs all. ` +
   'Confirming a non-local target ' +
   '(nonLocalConfirmed) and enabling active checks (allowMutatingRequests, ' +
-  'nucleiEnabledRiskTags) can only be done in the sakuda UI.'
+  'nucleiEnabledRiskTags) and allowing extra OpenAPI origins (openapiAllowedOrigins) ' +
+  'can only be done in the sakuda UI.'
 
 /** A schema rejection, except that the missing non-local confirmation gets
  * its own code: an agent cannot fix it by retrying, only the user can. */
@@ -180,6 +183,7 @@ function currentSettings(site: SitePublic): SiteUpdateInput {
     allowMutatingRequests: site.allowMutatingRequests,
     nucleiEnabledRiskTags: site.nucleiEnabledRiskTags,
     nucleiTags: site.nucleiTags,
+    openapiAllowedOrigins: site.openapiAllowedOrigins,
   }
 }
 
@@ -430,7 +434,8 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
         '(an http(s) URL sakuda fetches) or openapiJson (the document as a JSON string). The ' +
         'other one is cleared. Same validation as the sakuda UI; other settings and secrets ' +
         'are kept. A non-local URL is accepted only if the site is already confirmed for ' +
-        'non-local scanning in the UI, and only on the site’s own front or API origin.',
+        'non-local scanning in the UI, and only on the site’s own front or API origin or on an ' +
+        'extra origin the user allowed for it in the UI (openapiAllowedOrigins).',
       inputSchema: z.object({
         siteId: z.string().min(1),
         openapiUrl: z.string().optional(),
@@ -451,11 +456,16 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
       if (!parsed.success) return validationError(parsed.error)
       if (
         parsed.data.openapiUrl !== null &&
-        !isOnConfirmedOrigin(parsed.data.openapiUrl, [site.frontBaseUrl, site.apiBaseUrl])
+        !isOnConfirmedOrigin(parsed.data.openapiUrl, [
+          site.frontBaseUrl,
+          site.apiBaseUrl,
+          ...site.openapiAllowedOrigins,
+        ])
       )
         return refused(
           'OPENAPI_HOST_NOT_CONFIRMED: a non-local openapiUrl must be on the site’s front or ' +
-            'API base URL origin; set a URL on another host in the sakuda UI',
+            'API base URL origin or on an allowed OpenAPI origin; allow another host in the ' +
+            'sakuda UI',
         )
       return write(() => {
         const updated = updateSite(deps.site, siteId, parsed.data)

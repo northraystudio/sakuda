@@ -24,6 +24,7 @@ const site: SitePublic = {
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
   nucleiTags: [],
+  openapiAllowedOrigins: [],
   headerNames: [],
   browserStorageNames: [],
   requestShapes: {},

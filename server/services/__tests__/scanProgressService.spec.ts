@@ -150,6 +150,7 @@ describe('getScanProgress', () => {
           allowMutatingRequests: false,
           nucleiEnabledRiskTags: [],
           nucleiTags: [],
+          openapiAllowedOrigins: [],
           headerNames: [],
           browserStorageNames: [],
           requiresConfirmation: false,

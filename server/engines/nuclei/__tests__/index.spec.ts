@@ -101,6 +101,7 @@ function baseSite(overrides: Partial<SiteWithHeaders> = {}): SiteWithHeaders {
     allowMutatingRequests: false,
     nucleiEnabledRiskTags: [],
     nucleiTags: [],
+    openapiAllowedOrigins: [],
     headerNames: [],
     browserStorageNames: [],
     requiresConfirmation: false,
@@ -637,6 +638,7 @@ describe('runNuclei active injection checks (allowMutatingRequests)', () => {
         allowMutatingRequests: true,
         nucleiEnabledRiskTags: [],
         nucleiTags: [],
+        openapiAllowedOrigins: [],
       }),
     )
     expect(argv).not.toContain('-dast')

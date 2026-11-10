@@ -18,6 +18,26 @@ const HttpUrl = z
   .transform((u) => u.replace(/\/+$/, ''))
 const OptionalHttpUrl = z.preprocess(emptyToNull, HttpUrl.nullable()).default(null)
 
+/** Upper bound of `openapiAllowedOrigins`. */
+export const OPENAPI_ALLOWED_ORIGINS_MAX = 20
+
+/** A bare http(s) origin: scheme, host and optional port — no path, query,
+ * fragment or credentials, so the entry means exactly one origin. */
+const HttpOrigin = z
+  .url({ protocol: /^https?$/, error: 'must be an http(s) URL' })
+  .transform((u, ctx) => {
+    const url = new URL(u)
+    if (url.pathname !== '/' || url.search || url.hash || url.username || url.password) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'must be an origin only (scheme://host[:port]), without path, query or credentials',
+      })
+      return z.NEVER
+    }
+    return url.origin // normalized: lower-case host, default port dropped
+  })
+
 const SiteFieldsSchema = z.object({
   name: z.string().trim().min(1).max(100),
   frontBaseUrl: HttpUrl,
@@ -61,6 +81,13 @@ const SiteFieldsSchema = z.object({
     )
     .max(NUCLEI_TAG_CHOICES.length)
     .default([]),
+  /** Extra origins an MCP `set_openapi` may use for a non-local openapiUrl,
+   * besides the front/API origins (#27). UI-only: MCP writes cannot set it. */
+  openapiAllowedOrigins: z
+    .array(HttpOrigin)
+    .max(OPENAPI_ALLOWED_ORIGINS_MAX)
+    .default([])
+    .transform((origins) => [...new Set(origins)]),
   headers: HeadersSchema.optional(),
   /** Injected into ZAP's browser before the Ajax spider runs (SPA login state). */
   browserStorage: BrowserStorageSchema.optional(),

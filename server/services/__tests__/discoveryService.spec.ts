@@ -104,6 +104,7 @@ describe('createDiscovery', () => {
         allowMutatingRequests: false,
         nucleiEnabledRiskTags: [],
         nucleiTags: [],
+        openapiAllowedOrigins: [],
         headersEnc: null,
         headerNames: [],
         browserStorageNames: [],
