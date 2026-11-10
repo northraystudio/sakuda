@@ -25,6 +25,7 @@ function siteRow(id: string) {
     allowMutatingRequests: false,
     nucleiEnabledRiskTags: [],
     nucleiTags: [],
+    openapiAllowedOrigins: [],
     headersEnc: null,
     headerNames: [],
     browserStorageNames: [],

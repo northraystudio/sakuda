@@ -82,6 +82,7 @@ function baseSite(overrides: Partial<SiteWithHeaders> = {}): SiteWithHeaders {
     allowMutatingRequests: false,
     nucleiEnabledRiskTags: [],
     nucleiTags: [],
+    openapiAllowedOrigins: [],
     headerNames: [],
     browserStorageNames: [],
     requiresConfirmation: false,

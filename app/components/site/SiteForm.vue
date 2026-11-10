@@ -76,6 +76,8 @@ const form = reactive({
   nucleiEnabledRiskTags: [...(props.initial?.nucleiEnabledRiskTags ?? [])] as RiskTag[],
   // [] = all: the server's built-in tag list (#52).
   nucleiTags: [...(props.initial?.nucleiTags ?? [])] as NucleiTag[],
+  // One origin per line; the server validates and normalizes each (#27).
+  openapiAllowedOrigins: (props.initial?.openapiAllowedOrigins ?? []).join('\n'),
 })
 
 // Target paths has a second writer on the Edit page: the discovery panel in
@@ -463,6 +465,10 @@ function buildPayload(): SiteUpdateInput {
     allowMutatingRequests: form.allowMutatingRequests,
     nucleiEnabledRiskTags: form.nucleiEnabledRiskTags,
     nucleiTags: form.nucleiTags,
+    openapiAllowedOrigins: form.openapiAllowedOrigins
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== ''),
   }
   return {
     ...base,
@@ -1184,6 +1190,25 @@ function handleSubmit() {
         <p class="text-caption-sm text-mute">
           URL of the OpenAPI/Swagger document ZAP imports for the active API scan. This engine stays
           unavailable until one of the two is set; target paths do not feed it.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <label for="site-openapi-allowed-origins" class="text-caption-md font-medium text-ink"
+          >Extra OpenAPI origins for MCP <span class="text-mute">(one per line)</span></label
+        >
+        <textarea
+          id="site-openapi-allowed-origins"
+          v-model="form.openapiAllowedOrigins"
+          data-testid="openapi-allowed-origins"
+          rows="2"
+          placeholder="https://docs.example.com"
+          class="textarea-soft"
+        />
+        <p class="text-caption-sm text-mute">
+          Hosts other than the front and API base URLs where an MCP agent may point the OpenAPI URL
+          (e.g. a docs host or CDN). Origin only — scheme, host and port. Only this form can change
+          the list.
         </p>
       </div>
 

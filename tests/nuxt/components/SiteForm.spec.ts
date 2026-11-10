@@ -32,6 +32,7 @@ const editSite: SitePublic = {
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
   nucleiTags: [],
+  openapiAllowedOrigins: [],
   headerNames: ['Authorization', 'X-Api-Key'],
   browserStorageNames: [],
   requestShapes: {},
@@ -167,6 +168,44 @@ describe('SiteForm', () => {
     })
     expect(inputElement(wrapper, '[data-testid="nuclei-tag-sqli"]').checked).toBe(true)
     expect(inputElement(wrapper, '[data-testid="nuclei-tag-cve"]').checked).toBe(false)
+  })
+
+  it('submits the extra OpenAPI origins one per line, skipping blank lines (#27)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null },
+    })
+    await wrapper.find('[data-testid="name"]').setValue('Example')
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+    expect(emittedSubmit(wrapper).openapiAllowedOrigins).toEqual([])
+
+    await wrapper
+      .find('[data-testid="openapi-allowed-origins"]')
+      .setValue(' https://docs.example.com \n\nhttps://cdn.example.org:8443\n')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+    const events = wrapper.emitted('submit')
+    const last = events?.[events.length - 1]?.[0]
+    expect(SiteInputSchema.parse(last).openapiAllowedOrigins).toEqual([
+      'https://docs.example.com',
+      'https://cdn.example.org:8443',
+    ])
+  })
+
+  it('restores the saved extra OpenAPI origins when editing (#27)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: {
+        submitting: false,
+        errorMessage: null,
+        initial: {
+          ...editSite,
+          openapiAllowedOrigins: ['https://docs.example.com', 'https://b.example'],
+        },
+      },
+    })
+    expect(
+      (wrapper.find('[data-testid="openapi-allowed-origins"]').element as HTMLTextAreaElement)
+        .value,
+    ).toBe('https://docs.example.com\nhttps://b.example')
   })
 
   it('hides the non-local confirmation for a local frontBaseUrl', async () => {

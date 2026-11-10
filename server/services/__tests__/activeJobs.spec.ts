@@ -28,6 +28,7 @@ function site(id: string, name: string) {
       allowMutatingRequests: false,
       nucleiEnabledRiskTags: [],
       nucleiTags: [],
+      openapiAllowedOrigins: [],
       headersEnc: null,
       headerNames: [],
       browserStorageEnc: null,

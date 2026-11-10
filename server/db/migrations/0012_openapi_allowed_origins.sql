@@ -1,0 +1,1 @@
+ALTER TABLE `sites` ADD `openapi_allowed_origins` text DEFAULT '[]' NOT NULL;

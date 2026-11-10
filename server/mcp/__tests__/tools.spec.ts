@@ -341,6 +341,37 @@ describe('sakuda MCP write tools (#18)', () => {
         'http://localhost:3001/openapi.json',
       )
     })
+
+    it('accepts a non-local URL on an extra origin the user allowed in the UI (#27)', async () => {
+      const site = plainSite({
+        frontBaseUrl: 'https://shop.example.com',
+        nonLocalConfirmed: true,
+        openapiAllowedOrigins: ['https://docs.example.com', 'https://cdn.example.org:8443'],
+      })
+      const c = await connect()
+      const set = (openapiUrl: string) => call(c, 'set_openapi', { siteId: site.id, openapiUrl })
+
+      expect((await set('https://docs.example.com/v2/openapi.json')).json.openapiUrl).toBe(
+        'https://docs.example.com/v2/openapi.json',
+      )
+      expect((await set('https://cdn.example.org:8443/spec.json')).isError).toBe(false)
+      // Same host, other scheme or port: a different origin, so not allowed.
+      for (const url of [
+        'http://docs.example.com/openapi.json',
+        'https://cdn.example.org/spec.json',
+        'https://unlisted.example.net/openapi.json',
+      ]) {
+        const res = await set(url)
+        expect(res.isError).toBe(true)
+        expect(res.text).toMatch(/^OPENAPI_HOST_NOT_CONFIRMED: /)
+      }
+      const got = (await call(c, 'get_site', { siteId: site.id })).json
+      expect(got.openapiUrl).toBe('https://cdn.example.org:8443/spec.json')
+      expect(got.openapiAllowedOrigins).toEqual([
+        'https://docs.example.com',
+        'https://cdn.example.org:8443',
+      ])
+    })
   })
 
   describe('start_scan', () => {
@@ -442,7 +473,12 @@ describe('sakuda MCP write tools (#18)', () => {
 })
 
 describe('sakuda MCP site write tools (#46)', () => {
-  const UI_ONLY = ['nonLocalConfirmed', 'allowMutatingRequests', 'nucleiEnabledRiskTags']
+  const UI_ONLY = [
+    'nonLocalConfirmed',
+    'allowMutatingRequests',
+    'nucleiEnabledRiskTags',
+    'openapiAllowedOrigins',
+  ]
 
   it('offers every site field except the UI-only ones', () => {
     const formFields = Object.keys(SiteUpdateSchema.shape).filter((k) => !UI_ONLY.includes(k))
@@ -509,6 +545,7 @@ describe('sakuda MCP site write tools (#46)', () => {
         ['nonLocalConfirmed', true],
         ['allowMutatingRequests', true],
         ['nucleiEnabledRiskTags', ['dos']],
+        ['openapiAllowedOrigins', ['https://docs.example.com']],
       ] as const) {
         const res = await call(c, 'create_site', {
           name: 'x',
@@ -609,6 +646,16 @@ describe('sakuda MCP site write tools (#46)', () => {
       const res = await call(c, 'update_site', { siteId: site.id, allowMutatingRequests: true })
       expect(res.isError).toBe(true)
       expect(res.text).toContain('allowMutatingRequests')
+      // An agent cannot widen where an OpenAPI URL may live (#27).
+      const widen = await call(c, 'update_site', {
+        siteId: site.id,
+        openapiAllowedOrigins: ['https://docs.example.com'],
+      })
+      expect(widen.isError).toBe(true)
+      expect(widen.text).toContain('openapiAllowedOrigins')
+      expect((await call(c, 'get_site', { siteId: site.id })).json.openapiAllowedOrigins).toEqual(
+        [],
+      )
       expect((await call(c, 'get_site', { siteId: site.id })).json).toMatchObject({
         name: 'shop',
         nucleiPaths: '',

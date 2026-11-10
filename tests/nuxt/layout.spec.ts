@@ -25,6 +25,7 @@ function siteFixture(id: string, name: string): SiteListItem {
     allowMutatingRequests: false,
     nucleiEnabledRiskTags: [],
     nucleiTags: [],
+    openapiAllowedOrigins: [],
     headerNames: [],
     browserStorageNames: [],
     requestShapes: {},

@@ -71,6 +71,9 @@ export interface SitePublic {
   /** Template tags the nuclei scan is narrowed to; [] = all (the built-in
    * tag list, see server/engines/nuclei/args `nucleiTagsFor`). */
   nucleiTags: NucleiTag[]
+  /** Extra origins (besides front/API) an MCP `set_openapi` may point a
+   * non-local openapiUrl at. Set in the UI only (#27). */
+  openapiAllowedOrigins: string[]
   headerNames: string[]
   /** kind + name of each injected browser-storage item; values are write-only. */
   browserStorageNames: BrowserStorageName[]
