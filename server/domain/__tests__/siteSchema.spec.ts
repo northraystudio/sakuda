@@ -30,6 +30,7 @@ describe('SiteInputSchema', () => {
       nonLocalConfirmed: false,
       allowMutatingRequests: false,
       nucleiEnabledRiskTags: [],
+      nucleiTags: [],
     })
   })
 
@@ -71,6 +72,24 @@ describe('SiteInputSchema', () => {
       nucleiEnabledRiskTags: ['fuzz', 'nope'],
     })
     expect(bad.success).toBe(false)
+  })
+
+  it('defaults nucleiTags to [] (= all) and accepts the listed tags (#52)', () => {
+    const ok = SiteInputSchema.safeParse(minimal)
+    expect(ok.success && ok.data.nucleiTags).toEqual([])
+    const picked = SiteInputSchema.safeParse({ ...minimal, nucleiTags: ['cve', 'exposure'] })
+    expect(picked.success && picked.data.nucleiTags).toEqual(['cve', 'exposure'])
+  })
+
+  it.each([
+    [['xss', 'tech'], 'nucleiTags.1', /unknown nuclei tag "tech"/],
+    [['cve,xss'], 'nucleiTags.0', /unknown nuclei tag "cve,xss"/],
+    [[42], 'nucleiTags.0', /unknown nuclei tag 42/],
+    ['xss', 'nucleiTags', /./],
+  ])('rejects nucleiTags = %j, naming the bad value (#52)', (value, path, message) => {
+    const issues = issuesFor({ ...minimal, nucleiTags: value })
+    const issue = issues.find((i) => i.path.join('.') === path)
+    expect(issue?.message).toMatch(message)
   })
 
   it('maps empty string to null for optional URLs', () => {
@@ -148,6 +167,7 @@ describe('SiteInputSchema', () => {
       nonLocalConfirmed: true,
       allowMutatingRequests: false,
       nucleiEnabledRiskTags: [],
+      nucleiTags: [],
     })
     expect(result.success).toBe(true)
   })

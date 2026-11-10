@@ -1,0 +1,1 @@
+ALTER TABLE `sites` ADD `nuclei_tags` text DEFAULT '[]' NOT NULL;

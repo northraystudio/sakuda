@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseEnv, type Env } from '../../../config/env'
 import type { SiteWithHeaders } from '../../../services/siteService'
 import { EngineError } from '../../types'
+import { NUCLEI_BASE_TAGS } from '../args'
 import { runNuclei } from '../index'
 
 // Fake nuclei binary: reads the -o output path and -l targets file from
@@ -99,6 +100,7 @@ function baseSite(overrides: Partial<SiteWithHeaders> = {}): SiteWithHeaders {
     nonLocalConfirmed: false,
     allowMutatingRequests: false,
     nucleiEnabledRiskTags: [],
+    nucleiTags: [],
     headerNames: [],
     browserStorageNames: [],
     requiresConfirmation: false,
@@ -634,11 +636,79 @@ describe('runNuclei active injection checks (allowMutatingRequests)', () => {
         nonLocalConfirmed: false,
         allowMutatingRequests: true,
         nucleiEnabledRiskTags: [],
+        nucleiTags: [],
       }),
     )
     expect(argv).not.toContain('-dast')
     expect(out.meta.activeScan).toBe(false)
     expect(out.meta.dastPhase).toBe('skipped')
+  })
+
+  describe('site tag selection (#52)', () => {
+    const tagsOf = (a: string[] | null) => (a ? a[a.indexOf('-tags') + 1] : null)
+    const exposureArgv = (): string[] | null => {
+      const p = join(tmp, 'work', 'argv-exposure-findings.jsonl.json')
+      // as: written by FAKE_RECORD_ARGS as JSON string[]
+      return existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as string[]) : null
+    }
+
+    it('with no selection passes exactly the built-in tag lists (unchanged behaviour)', async () => {
+      const { out, argv } = await run(baseSite({ nucleiPaths: '/a' }))
+      expect(tagsOf(argv)).toBe(NUCLEI_BASE_TAGS.join(','))
+      expect(tagsOf(exposureArgv())).toBe('exposure,config,misconfig')
+      expect(argv[argv.indexOf('-exclude-tags') + 1]).toBe(
+        'dos,fuzz,intrusive,exposure,config,misconfig',
+      )
+      expect(out.meta.selectedTags).toBeUndefined()
+    })
+
+    it('runs only the selected tags, splitting priority tags into the priority pass', async () => {
+      const { out, argv, dastArgv } = await run(
+        baseSite({
+          allowMutatingRequests: true,
+          nucleiPaths: '/search?q=',
+          nucleiTags: ['xss', 'exposure'],
+        }),
+      )
+      expect(tagsOf(argv)).toBe('xss,exposure')
+      expect(tagsOf(dastArgv)).toBe('xss,exposure')
+      expect(tagsOf(exposureArgv())).toBe('exposure')
+      // only the priority tag that actually ran is excluded from the full pass
+      expect(argv[argv.indexOf('-exclude-tags') + 1]).toBe('dos,fuzz,intrusive,exposure')
+      expect(out.meta.selectedTags).toEqual(['xss', 'exposure'])
+    })
+
+    it('skips the priority pass when no priority tag is selected, without excluding them', async () => {
+      const { out, argv, order } = await run(baseSite({ nucleiPaths: '/a', nucleiTags: ['cve'] }))
+      expect(order).toEqual(['findings.jsonl'])
+      expect(tagsOf(argv)).toBe('cve')
+      // a cve template also tagged `exposure` must still run in the full pass
+      expect(argv[argv.indexOf('-exclude-tags') + 1]).toBe('dos,fuzz,intrusive')
+      expect(out.meta.exposurePhase).toBe('skipped')
+    })
+
+    it('skips the full pass when every selected tag is a priority tag', async () => {
+      const { out, argv, order } = await run(
+        baseSite({ nucleiPaths: '/a', nucleiTags: ['misconfig', 'config'] }),
+      )
+      expect(order).toEqual(['exposure-findings.jsonl'])
+      expect(argv).toBeNull()
+      expect(tagsOf(exposureArgv())).toBe('config,misconfig')
+      expect(out.meta.signaturePhase).toBe('skipped')
+      expect(out.meta.exposurePhase).toBe('empty')
+    })
+
+    it('keeps the risk opt-in extra tags on top of a selection', async () => {
+      const { dastArgv } = await run(
+        baseSite({
+          allowMutatingRequests: true,
+          nucleiEnabledRiskTags: ['fuzz'],
+          nucleiTags: ['xss'],
+        }),
+      )
+      expect(tagsOf(dastArgv)).toBe('xss,cmdi,rce')
+      expect(dastArgv![dastArgv!.indexOf('-exclude-tags') + 1]).toBe('dos,intrusive')
+    })
   })
 })
 

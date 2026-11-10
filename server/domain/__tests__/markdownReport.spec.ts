@@ -20,6 +20,7 @@ const siteSnapshot: SiteSnapshot = {
   nonLocalConfirmed: true,
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
+  nucleiTags: [],
   headerNames: ['Authorization'],
   browserStorageNames: [],
   requiresConfirmation: false,

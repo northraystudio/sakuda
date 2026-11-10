@@ -552,6 +552,44 @@ describe('sakuda MCP site write tools (#46)', () => {
       expect(read.json.headerNames).toEqual(['Authorization', 'X-Api-Key'])
     })
 
+    it('sets the nuclei tag selection, keeps it when omitted, and clears it with [] (#52)', async () => {
+      const c = await connect()
+      const created = await call(c, 'create_site', {
+        name: 'shop',
+        frontBaseUrl: 'http://localhost:3001',
+        nucleiTags: ['cve', 'xss'],
+      })
+      expect(created.json.nucleiTags).toEqual(['cve', 'xss'])
+      const id = created.json.id
+      expect(loadSiteWithHeaders(deps, id)?.nucleiTags).toEqual(['cve', 'xss'])
+
+      await call(c, 'update_site', { siteId: id, name: 'shop v2' })
+      expect((await call(c, 'get_site', { siteId: id })).json.nucleiTags).toEqual(['cve', 'xss'])
+
+      const narrowed = await call(c, 'update_site', { siteId: id, nucleiTags: ['exposure'] })
+      expect(narrowed.json.nucleiTags).toEqual(['exposure'])
+      const cleared = await call(c, 'update_site', { siteId: id, nucleiTags: [] })
+      expect(cleared.json.nucleiTags).toEqual([])
+    })
+
+    it('rejects an unknown nuclei tag naming the value, writing nothing (#52)', async () => {
+      const site = createSite(
+        deps,
+        SiteInputSchema.parse({ name: 'shop', frontBaseUrl: 'http://localhost:3001' }),
+      )
+      const c = await connect()
+      const res = await call(c, 'update_site', { siteId: site.id, nucleiTags: ['xss', 'tech'] })
+      expect(res.isError).toBe(true)
+      expect(res.text).toMatch(/^VALIDATION: nucleiTags\.1: unknown nuclei tag "tech"/)
+      const created = await call(c, 'create_site', {
+        name: 'x',
+        frontBaseUrl: 'http://localhost:3001',
+        nucleiTags: ['nope'],
+      })
+      expect(created.text).toMatch(/^VALIDATION: nucleiTags\.0: unknown nuclei tag "nope"/)
+      expect((await call(c, 'get_site', { siteId: site.id })).json.nucleiTags).toEqual([])
+    })
+
     it('rejects invalid input and unknown sites, writing nothing', async () => {
       const site = createSite(
         deps,

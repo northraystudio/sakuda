@@ -31,6 +31,7 @@ const editSite: SitePublic = {
   nonLocalConfirmed: true,
   allowMutatingRequests: false,
   nucleiEnabledRiskTags: [],
+  nucleiTags: [],
   headerNames: ['Authorization', 'X-Api-Key'],
   browserStorageNames: [],
   requestShapes: {},
@@ -137,6 +138,35 @@ describe('SiteForm', () => {
     const events = wrapper.emitted('submit')
     const last = events?.[events.length - 1]?.[0]
     expect(SiteInputSchema.parse(last).nucleiEnabledRiskTags).toEqual(['fuzz'])
+  })
+
+  it('submits no nuclei tags (= all) by default and the ticked ones once selected (#52)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null },
+    })
+    await wrapper.find('[data-testid="name"]').setValue('Example')
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+    expect(emittedSubmit(wrapper).nucleiTags).toEqual([])
+
+    await wrapper.find('[data-testid="nuclei-tag-cve"]').setValue(true)
+    await wrapper.find('[data-testid="nuclei-tag-exposure"]').setValue(true)
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+    const events = wrapper.emitted('submit')
+    const last = events?.[events.length - 1]?.[0]
+    expect(SiteInputSchema.parse(last).nucleiTags).toEqual(['cve', 'exposure'])
+  })
+
+  it('restores the saved nuclei tags when editing (#52)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: {
+        submitting: false,
+        errorMessage: null,
+        initial: { ...editSite, nucleiTags: ['sqli'] },
+      },
+    })
+    expect(inputElement(wrapper, '[data-testid="nuclei-tag-sqli"]').checked).toBe(true)
+    expect(inputElement(wrapper, '[data-testid="nuclei-tag-cve"]').checked).toBe(false)
   })
 
   it('hides the non-local confirmation for a local frontBaseUrl', async () => {

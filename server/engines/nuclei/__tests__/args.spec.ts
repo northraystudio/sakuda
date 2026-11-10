@@ -6,6 +6,7 @@ import {
   fullSignatureExcludeTags,
   NUCLEI_BASE_TAGS,
   NUCLEI_PRIORITY_SIGNATURE_TAGS,
+  nucleiTagPlan,
   nucleiTagsFor,
 } from '../args'
 import type { OastConfig } from '../../../config/env'
@@ -38,6 +39,52 @@ describe('nucleiTagsFor', () => {
 
   it('appends auth-bypass when authenticated', () => {
     expect(nucleiTagsFor(true)).toEqual([...NUCLEI_BASE_TAGS, 'auth-bypass'])
+  })
+
+  it('uses exactly the selected tags when the site selected some (#52)', () => {
+    expect(nucleiTagsFor(true, ['cve', 'xss'])).toEqual(['cve', 'xss'])
+  })
+})
+
+describe('fullSignatureExcludeTags with a narrowed priority pass (#52)', () => {
+  it('excludes only the priority tags that were run', () => {
+    expect(fullSignatureExcludeTags(['dos'], ['exposure'])).toEqual(['dos', 'exposure'])
+    expect(fullSignatureExcludeTags(['dos'], [])).toEqual(['dos'])
+  })
+})
+
+describe('nucleiTagPlan (#52)', () => {
+  it('with no selection is the fixed plan: built-in list, all priority tags, full pass on', () => {
+    expect(nucleiTagPlan(false, [], ['cmdi', 'rce'])).toEqual({
+      tags: [...NUCLEI_BASE_TAGS, 'cmdi', 'rce'],
+      priorityTags: NUCLEI_PRIORITY_SIGNATURE_TAGS,
+      runFullSignature: true,
+    })
+  })
+
+  it('splits a selection: selected priority tags go to the priority pass', () => {
+    expect(nucleiTagPlan(true, ['sqli', 'misconfig'], [])).toEqual({
+      tags: ['sqli', 'misconfig'],
+      priorityTags: ['misconfig'],
+      runFullSignature: true,
+    })
+  })
+
+  it('turns the full pass off when only priority tags are selected', () => {
+    expect(nucleiTagPlan(false, ['exposure'], []).runFullSignature).toBe(false)
+  })
+
+  it('keeps the full pass on when risk extra tags remain beside priority-only selection', () => {
+    // fuzz opted in: cmdi / rce must still run in the signature phase
+    expect(nucleiTagPlan(false, ['exposure'], ['cmdi', 'rce']).runFullSignature).toBe(true)
+  })
+
+  it('turns the priority pass off when no priority tag is selected', () => {
+    expect(nucleiTagPlan(false, ['cve'], []).priorityTags).toEqual([])
+  })
+
+  it('keeps the risk extra tags on top of a selection, de-duplicated', () => {
+    expect(nucleiTagPlan(false, ['xss'], ['cmdi', 'xss']).tags).toEqual(['xss', 'cmdi'])
   })
 })
 

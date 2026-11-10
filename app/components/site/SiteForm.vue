@@ -9,10 +9,12 @@ import type {
   CapturedStorageItem,
   CaptureResult,
   CaptureStart,
+  NucleiTag,
   RiskTag,
   SitePublic,
   SiteSecrets,
 } from '#shared/types/api'
+import { NUCLEI_TAG_CHOICES } from '#shared/types/api'
 import { parseSeedPathLines } from '#shared/utils/seedPaths'
 import SecretRevealButton from './SecretRevealButton.vue'
 import { secretKey } from '#shared/utils/secretExpiry'
@@ -72,6 +74,8 @@ const form = reactive({
   nonLocalConfirmed: props.initial?.nonLocalConfirmed ?? false,
   allowMutatingRequests: props.initial?.allowMutatingRequests ?? false,
   nucleiEnabledRiskTags: [...(props.initial?.nucleiEnabledRiskTags ?? [])] as RiskTag[],
+  // [] = all: the server's built-in tag list (#52).
+  nucleiTags: [...(props.initial?.nucleiTags ?? [])] as NucleiTag[],
 })
 
 // Target paths has a second writer on the Edit page: the discovery panel in
@@ -106,6 +110,28 @@ const RISK_TAG_GROUPS: { tag: RiskTag; label: string; help: string }[] = [
     help: 'sends templates that may crash or hang the target. Leave off unless you can afford downtime.',
   },
 ]
+
+/** What each selectable nuclei template tag covers (#52). A Record keyed by
+ * NucleiTag, so a new choice without a label fails the type check. */
+const NUCLEI_TAG_LABELS: Record<NucleiTag, { label: string; help: string }> = {
+  xss: { label: 'XSS', help: 'cross-site scripting.' },
+  injection: { label: 'Injection', help: 'generic injection checks.' },
+  sqli: { label: 'SQL injection', help: 'SQL injection.' },
+  ssrf: { label: 'SSRF', help: 'server-side request forgery.' },
+  lfi: { label: 'File inclusion', help: 'local file inclusion / path traversal.' },
+  exposure: {
+    label: 'Exposed files & secrets',
+    help: 'paths that should not be public — .env, config, backups, logs, tokens.',
+  },
+  config: { label: 'Exposed config', help: 'configuration files and endpoints.' },
+  misconfig: { label: 'Misconfiguration', help: 'insecure server / framework settings.' },
+  'auth-bypass': { label: 'Auth bypass', help: 'authentication bypass checks.' },
+  cve: {
+    label: 'Known CVEs',
+    help: 'about 4,000 templates — the largest group, so scans take much longer.',
+  },
+}
+const NUCLEI_TAG_GROUPS = NUCLEI_TAG_CHOICES.map((tag) => ({ tag, ...NUCLEI_TAG_LABELS[tag] }))
 
 // `shared/utils/localHost.ts` — auto-imported from `shared/utils/*`. A blank
 // or unparsable frontBaseUrl must not show the confirmation gate on a fresh
@@ -436,6 +462,7 @@ function buildPayload(): SiteUpdateInput {
     nonLocalConfirmed: form.nonLocalConfirmed,
     allowMutatingRequests: form.allowMutatingRequests,
     nucleiEnabledRiskTags: form.nucleiEnabledRiskTags,
+    nucleiTags: form.nucleiTags,
   }
   return {
     ...base,
@@ -1024,6 +1051,27 @@ function handleSubmit() {
         <p class="text-caption-sm text-mute">
           Templates run in parallel. Empty uses the server's SAKUDA_NUCLEI_CONCURRENCY (default 25).
         </p>
+      </div>
+
+      <div class="flex flex-col gap-2" data-testid="nuclei-tags">
+        <span class="text-caption-md font-medium text-ink">Template categories</span>
+        <p class="text-caption-sm text-mute">
+          Leave all unchecked to run every category (default). Check some to run only those — a
+          shorter scan.
+        </p>
+        <label v-for="group in NUCLEI_TAG_GROUPS" :key="group.tag" class="flex items-start gap-3">
+          <input
+            v-model="form.nucleiTags"
+            :value="group.tag"
+            :data-testid="`nuclei-tag-${group.tag}`"
+            type="checkbox"
+            class="mt-1"
+          />
+          <span class="text-caption-sm">
+            <span class="font-medium text-ink">{{ group.label }}</span>
+            <span class="text-mute"> — {{ group.help }}</span>
+          </span>
+        </label>
       </div>
 
       <div class="flex flex-col gap-2">

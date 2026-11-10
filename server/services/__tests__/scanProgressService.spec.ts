@@ -149,6 +149,7 @@ describe('getScanProgress', () => {
           nonLocalConfirmed: false,
           allowMutatingRequests: false,
           nucleiEnabledRiskTags: [],
+          nucleiTags: [],
           headerNames: [],
           browserStorageNames: [],
           requiresConfirmation: false,

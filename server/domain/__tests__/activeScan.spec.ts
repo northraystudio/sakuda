@@ -28,6 +28,7 @@ describe('isActiveScanEnabled', () => {
         requiresConfirmation: false,
         nonLocalConfirmed: false,
         nucleiEnabledRiskTags: [],
+        nucleiTags: [],
       }),
     ).toBe(false)
   })
@@ -39,6 +40,7 @@ describe('isActiveScanEnabled', () => {
         requiresConfirmation: false,
         nonLocalConfirmed: false,
         nucleiEnabledRiskTags: [],
+        nucleiTags: [],
       }),
     ).toBe(true)
   })
@@ -50,6 +52,7 @@ describe('isActiveScanEnabled', () => {
         requiresConfirmation: true,
         nonLocalConfirmed: true,
         nucleiEnabledRiskTags: [],
+        nucleiTags: [],
       }),
     ).toBe(true)
   })
@@ -61,6 +64,7 @@ describe('isActiveScanEnabled', () => {
         requiresConfirmation: true,
         nonLocalConfirmed: false,
         nucleiEnabledRiskTags: [],
+        nucleiTags: [],
       }),
     ).toBe(false)
   })
