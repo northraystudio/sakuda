@@ -1,6 +1,6 @@
 # 0001. 開発時・ビルド時だけの依存の advisory を pnpm audit の例外にする
 
-- Status: Accepted (2026-10-10)
+- Status: Superseded (2026-11-10) — 例外はすべて外した（#13）。Accepted (2026-10-10)
 - Issue: #12（対応）、#13（例外を外すための追跡）
 
 ## Context
@@ -13,8 +13,8 @@ semver の範囲内で依存を更新すると（nuxt 4.5.2 → 4.6.1 ほか）3
 | ------------------------------------------------------------- | ------------------------------- | -------------------------------------- | -------------------------------------------- |
 | GHSA-x6jw-m9v5-85vh, GHSA-g4wm-2vf7-vfgr, GHSA-858h-whjf-mvg5 | `simple-git` 3.36.0             | nuxt > @nuxt/devtools 3.4.2            | 解消済み（devtools 3.4.3 で依存が削除、#13） |
 | GHSA-v5rq-49vh-5v5c                                           | `@simple-git/argv-parser` 1.1.1 | 同上                                   | 同上                                         |
-| GHSA-86w9-cpqp-85rv                                           | `node-forge` 1.4.0              | nuxt > nitropack > listhen             | 直った版なし                                 |
-| GHSA-vfj7-8cjw-p6xm                                           | `braces` 3.0.3                  | nuxt > nitropack > globby > micromatch | 直った版なし                                 |
+| GHSA-86w9-cpqp-85rv                                           | `node-forge` 1.4.0              | nuxt > nitropack > listhen             | 解消済み（1.4.3、#54）                       |
+| GHSA-vfj7-8cjw-p6xm                                           | `braces` 3.0.3                  | nuxt > nitropack > globby > micromatch | advisory 取り下げ（2026-10-23）              |
 
 どれも `nuxt` の dependencies に含まれるので `--prod` の対象になる。しかし実際に使われるのは開発時だけ（devtools、dev サーバーの https）か、ビルド時だけ（nitropack の glob）。`pnpm build` の成果物で本番イメージにコピーされる `.output/server/node_modules` には、この3パッケージのどれも入っていないことを確認した（入っているのは `devalue` 6.0.2 などの実行時の依存だけ）。
 
@@ -31,4 +31,5 @@ semver の範囲内で依存を更新すると（nuxt 4.5.2 → 4.6.1 ほか）3
 - 例外にした件数分は、開発者の手元（`pnpm dev`、devtools）にはリスクとして残る。本番イメージには届かない。
 - 例外は放っておくと残り続けるので、#13 で追跡する。上流に直った版が出たら依存を更新して例外を外し、全部外せたらこの ADR を Superseded にする。
 - 2026-10-19: `@nuxt/devtools` 3.4.3 で `simple-git` への依存がなくなったので、simple-git 系の4件を外した。残る例外は `node-forge`（GHSA-86w9-cpqp-85rv）と `braces`（GHSA-vfj7-8cjw-p6xm）の2件。
+- 2026-11-10: 残る2件も外し、`pnpm.auditConfig` を削除した（#13）。`node-forge` は #54 で 1.4.3 になり、advisory の対象（`<= 1.4.0`）から外れた。`braces` の advisory は 2026-10-23 に取り下げられた。例外なしで `pnpm audit --prod --audit-level=high` が通るので、この ADR は Superseded とする。
 - `nuxt` の更新で、これらのパッケージが実行時の依存（`.output` に入るもの）に変わった場合、この判断の前提が崩れる。その時点で例外を見直す。
