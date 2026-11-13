@@ -454,6 +454,17 @@ sakuda は **Capture** の後にその Chrome を終了させます。途中で�
 （macOS / Windows）か、ホストで動かす sakuda が前提です。Linux の Docker では、
 `host.docker.internal` から 127.0.0.1 に bind した Chrome に届きません。
 
+**診断中のログイン切れ。** 診断の途中でログインが無効になることがあります（アプリが
+リフレッシュトークンを更新した、エンジンがログアウトを叩いた など）。**Edit site →
+Authentication** の **Login check path** に、ログアウト状態で 401/403 を返すページか API
+（`/account`、API base URL 側なら `api:/me`）を設定すると、sakuda は診断の開始時と、
+その後 1 分ごとにサイトのヘッダ付きでそこへリクエストします。最初に 401/403 を受けた
+時点をスキャンに記録します（スキャン API の `authLost`、スキャン画面の警告）。診断は
+そのまま続くので、止めるときは **Stop scan**（`POST /api/scans/:id/cancel`）を押して
+ください。スキャンは `failed`（`cancelled by user`）になり、保存済みの検出結果は
+残ります。確認できるのはヘッダで送る認証（Cookie / Authorization）だけです。空欄なら
+確認しません。
+
 **ディスカバリのシード。** _Discovery seed paths_（1 行 1 つ。`/#/search?q=apple`
 のようなハッシュルートも可）はそれぞれ Ajax spider を 1 つ起動します。空の場合は
 ZAP frontend のシードパスにフォールバックします。

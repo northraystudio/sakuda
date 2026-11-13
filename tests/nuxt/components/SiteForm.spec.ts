@@ -33,6 +33,7 @@ const editSite: SitePublic = {
   nucleiEnabledRiskTags: [],
   nucleiTags: [],
   openapiAllowedOrigins: [],
+  authCheckPath: null,
   headerNames: ['Authorization', 'X-Api-Key'],
   browserStorageNames: [],
   requestShapes: {},
@@ -354,6 +355,34 @@ describe('SiteForm', () => {
 
     const payload = emittedSubmit(wrapper)
     expect(payload.headers).toEqual([])
+  })
+
+  it('submits the login check path, or null when left empty (#74)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null },
+    })
+    await wrapper.find('[data-testid="name"]').setValue('Example')
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+    expect(emittedSubmit(wrapper).authCheckPath).toBeNull()
+
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/account')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+    const events = wrapper.emitted('submit')
+    const last = events?.[events.length - 1]?.[0]
+    expect(SiteInputSchema.parse(last).authCheckPath).toBe('/account')
+  })
+
+  it('shows the stored login check path in edit mode (#74)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: {
+        submitting: false,
+        errorMessage: null,
+        initial: { ...editSite, authCheckPath: 'api:/me' },
+      },
+    })
+    const input = wrapper.find<HTMLInputElement>('[data-testid="auth-check-path"]')
+    expect(input.element.value).toBe('api:/me')
   })
 
   describe('edit mode header rows', () => {

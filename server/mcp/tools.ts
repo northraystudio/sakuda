@@ -132,6 +132,7 @@ export const AGENT_SITE_FIELDS = {
   nucleiTags: z.array(z.string()),
   zapApiMaxMinutes: z.number(),
   zapFeSpiderMaxMinutes: z.number(),
+  authCheckPath: z.string().nullable(),
   headers: z.array(z.strictObject({ name: z.string(), value: z.string().optional() })),
   browserStorage: z.array(
     z.strictObject({ kind: z.string(), name: z.string(), value: z.string().optional() }),
@@ -184,6 +185,7 @@ function currentSettings(site: SitePublic): SiteUpdateInput {
     nucleiEnabledRiskTags: site.nucleiEnabledRiskTags,
     nucleiTags: site.nucleiTags,
     openapiAllowedOrigins: site.openapiAllowedOrigins,
+    authCheckPath: site.authCheckPath,
   }
 }
 

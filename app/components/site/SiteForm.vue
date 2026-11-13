@@ -78,6 +78,8 @@ const form = reactive({
   nucleiTags: [...(props.initial?.nucleiTags ?? [])] as NucleiTag[],
   // One origin per line; the server validates and normalizes each (#27).
   openapiAllowedOrigins: (props.initial?.openapiAllowedOrigins ?? []).join('\n'),
+  // '' = no auth check during scans (#74).
+  authCheckPath: props.initial?.authCheckPath ?? '',
 })
 
 // Target paths has a second writer on the Edit page: the discovery panel in
@@ -469,6 +471,7 @@ function buildPayload(): SiteUpdateInput {
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line !== ''),
+    authCheckPath: emptyToNull(form.authCheckPath),
   }
   return {
     ...base,
@@ -792,6 +795,26 @@ function handleSubmit() {
             Add item
           </button>
         </div>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <label for="site-auth-check-path" class="text-caption-md font-medium text-ink"
+          >Login check path <span class="text-mute">(optional)</span></label
+        >
+        <input
+          id="site-auth-check-path"
+          v-model="form.authCheckPath"
+          data-testid="auth-check-path"
+          type="text"
+          placeholder="api:/me"
+          class="input-pill"
+        />
+        <p class="text-caption-sm text-mute">
+          A page or API that answers 401/403 when logged out. During a scan sakuda requests it with
+          the headers above every minute and flags the scan if the login stops working. Prefix
+          <code class="font-mono">api:</code> to use the API base URL. Leave empty to skip the
+          check.
+        </p>
       </div>
     </fieldset>
 

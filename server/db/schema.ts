@@ -7,6 +7,7 @@ import type {
   RequestShape,
   RiskTag,
   SeverityCounts,
+  ScanAuthLost,
   SiteSnapshot,
   TriageStatus,
 } from '#shared/types/api'
@@ -41,6 +42,9 @@ export const sites = sqliteTable('sites', {
     .$type<string[]>()
     .notNull()
     .default([]),
+  /** `[api:]/path` sakuda polls during a scan to notice a lost login (#74);
+   * null → no check. */
+  authCheckPath: text('auth_check_path'),
   headersEnc: blob('headers_enc', { mode: 'buffer' }),
   headerNames: text('header_names', { mode: 'json' }).$type<string[]>().notNull(),
   browserStorageEnc: blob('browser_storage_enc', { mode: 'buffer' }),
@@ -72,6 +76,8 @@ export const scans = sqliteTable(
     engines: text('engines', { mode: 'json' }).$type<Engine[]>().notNull(),
     siteSnapshot: text('site_snapshot', { mode: 'json' }).$type<SiteSnapshot>().notNull(),
     error: text('error'),
+    /** First time the auth check saw the login rejected (#74); null → never. */
+    authLost: text('auth_lost', { mode: 'json' }).$type<ScanAuthLost>(),
     createdAt: text('created_at').notNull(),
     startedAt: text('started_at'),
     finishedAt: text('finished_at'),

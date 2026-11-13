@@ -25,6 +25,7 @@ const site: SitePublic = {
   nucleiEnabledRiskTags: [],
   nucleiTags: [],
   openapiAllowedOrigins: [],
+  authCheckPath: null,
   headerNames: [],
   browserStorageNames: [],
   requestShapes: {},

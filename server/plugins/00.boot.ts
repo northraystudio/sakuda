@@ -5,7 +5,7 @@ import { closeDb, getDb } from '../db/client'
 import { createSiteCipher } from '../domain/headerCipher'
 import { engineRunners } from '../engines'
 import { runDiscover } from '../engines/discover'
-import { createJobLoop } from '../services/jobLoop'
+import { createJobLoop, registerJobLoop } from '../services/jobLoop'
 import { recoverInterruptedDiscoveries } from '../services/discoveryService'
 import { recoverInterruptedScans } from '../services/scanService'
 import { logger } from '../lib/logger'
@@ -52,12 +52,14 @@ export default defineNitroPlugin((nitroApp) => {
     pollMs: POLL_MS,
   })
   loop.start()
+  registerJobLoop(loop)
   logger.info(
     { dataDir: env.dataDir, nucleiBin: env.nuclei.bin, zapCmd: env.zap.cmd },
     'job runner started',
   )
 
   nitroApp.hooks.hook('close', async () => {
+    registerJobLoop(null)
     await loop.stop()
     closeDb()
   })

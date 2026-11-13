@@ -28,6 +28,7 @@ const template: SiteTemplate = {
   nucleiEnabledRiskTags: ['fuzz'],
   nucleiTags: [],
   openapiAllowedOrigins: [],
+  authCheckPath: null,
   requestShapes: {
     'POST|front|/api/Users/': {
       contentType: 'application/json',

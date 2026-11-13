@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AuthLostNotice from '~/components/scan/AuthLostNotice.vue'
 import DiffSummary from '~/components/scan/DiffSummary.vue'
 import EngineRunPanel from '~/components/scan/EngineRunPanel.vue'
 import IntrusionProgress from '~/components/scan/IntrusionProgress.vue'
@@ -63,6 +64,21 @@ const isActive = computed(() => {
   return !state.value || status === 'queued' || status === 'running'
 })
 
+// Stop (#74): the server answers 202 and the scan turns `failed`
+// ("cancelled by user") on a later poll, once the running engine has stopped.
+const stopping = ref(false)
+const stopError = ref<string | null>(null)
+async function handleStop() {
+  stopping.value = true
+  stopError.value = null
+  try {
+    await $fetch(`/api/scans/${scanId}/cancel`, { method: 'POST', body: {} })
+  } catch (err) {
+    stopError.value = toApiErrorMessage(err)
+    stopping.value = false
+  }
+}
+
 const totalCounts = computed(() => {
   if (!state.value) return emptyCounts()
   return state.value.engineRuns.reduce((acc, run) => addCounts(acc, run.counts), emptyCounts())
@@ -71,6 +87,26 @@ const totalCounts = computed(() => {
 
 <template>
   <div>
+    <AuthLostNotice v-if="state?.authLost" class="mb-4" :auth-lost="state.authLost" />
+
+    <div
+      v-if="!error && state?.status === 'running'"
+      class="mb-4 flex flex-wrap items-center gap-3"
+    >
+      <button
+        type="button"
+        data-testid="scan-stop"
+        class="btn-secondary"
+        :disabled="stopping"
+        @click="handleStop"
+      >
+        {{ stopping ? 'Stopping…' : 'Stop scan' }}
+      </button>
+      <p v-if="stopError" data-testid="scan-stop-error" role="alert" class="text-sale text-body-md">
+        {{ stopError }}
+      </p>
+    </div>
+
     <p v-if="error" data-testid="poll-error" class="text-sale text-body-md">{{ error }}</p>
 
     <ScanProgress

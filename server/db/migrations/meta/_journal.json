@@ -92,6 +92,13 @@
       "when": 1794305007357,
       "tag": "0012_openapi_allowed_origins",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794563493169,
+      "tag": "0013_auth_lost",
+      "breakpoints": true
     }
   ]
 }

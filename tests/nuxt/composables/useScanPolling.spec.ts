@@ -16,6 +16,7 @@ function scanFixture(overrides: Partial<ScanDetail> = {}): ScanDetail {
     startedAt: '2026-01-01T00:00:00.000Z',
     finishedAt: null,
     error: null,
+    authLost: null,
     counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
     siteName: 'Example',
     siteSnapshot: {
@@ -40,6 +41,7 @@ function scanFixture(overrides: Partial<ScanDetail> = {}): ScanDetail {
       nucleiEnabledRiskTags: [],
       nucleiTags: [],
       openapiAllowedOrigins: [],
+      authCheckPath: null,
       headerNames: [],
       browserStorageNames: [],
       requestShapes: {},

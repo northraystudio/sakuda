@@ -88,6 +88,20 @@ const SiteFieldsSchema = z.object({
     .max(OPENAPI_ALLOWED_ORIGINS_MAX)
     .default([])
     .transform((origins) => [...new Set(origins)]),
+  /** `[api:]/path` sakuda GETs with the site's headers during a scan to
+   * notice a lost login (#74); empty → no check. Always on the site's own
+   * front/API origin — a full URL is rejected. */
+  authCheckPath: z
+    .preprocess(
+      emptyToNull,
+      z
+        .string()
+        .trim()
+        .max(2_000)
+        .regex(/^(api:)?\/\S*$/, 'must be "/path" or "api:/path"')
+        .nullable(),
+    )
+    .default(null),
   headers: HeadersSchema.optional(),
   /** Injected into ZAP's browser before the Ajax spider runs (SPA login state). */
   browserStorage: BrowserStorageSchema.optional(),
@@ -110,6 +124,13 @@ function refineSiteFields(v: Omit<SiteFields, 'headers' | 'browserStorage'>, ctx
       code: 'custom',
       path: ['apiBaseUrl'],
       message: 'apiBaseUrl is required because nucleiPaths contains "api:" lines',
+    })
+  }
+  if (!v.apiBaseUrl && v.authCheckPath?.startsWith('api:')) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['apiBaseUrl'],
+      message: 'apiBaseUrl is required because authCheckPath starts with "api:"',
     })
   }
   if (v.openapiUrl && v.openapiJson) {

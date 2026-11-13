@@ -35,6 +35,7 @@ function siteFixture(overrides: Partial<SitePublic> = {}): SitePublic {
     nucleiEnabledRiskTags: [],
     nucleiTags: [],
     openapiAllowedOrigins: [],
+    authCheckPath: null,
     headerNames: [],
     browserStorageNames: [],
     requestShapes: {},

@@ -338,3 +338,35 @@ describe('SiteInputSchema', () => {
     )
   })
 })
+
+describe('authCheckPath (#74)', () => {
+  it('defaults to null and turns an empty string into null', () => {
+    expect(SiteInputSchema.parse(minimal).authCheckPath).toBeNull()
+    expect(SiteInputSchema.parse({ ...minimal, authCheckPath: '  ' }).authCheckPath).toBeNull()
+  })
+
+  it('accepts a front path and, with an API base URL, an api: path', () => {
+    expect(SiteInputSchema.parse({ ...minimal, authCheckPath: ' /account ' }).authCheckPath).toBe(
+      '/account',
+    )
+    expect(
+      SiteInputSchema.parse({
+        ...minimal,
+        apiBaseUrl: 'http://localhost:3001',
+        authCheckPath: 'api:/me',
+      }).authCheckPath,
+    ).toBe('api:/me')
+  })
+
+  it('rejects a full URL, which could point the check off the site', () => {
+    expect(
+      issuesFor({ ...minimal, authCheckPath: 'https://evil.example/me' }).map((i) => i.path),
+    ).toEqual([['authCheckPath']])
+  })
+
+  it('requires an API base URL for an api: path', () => {
+    expect(issuesFor({ ...minimal, authCheckPath: 'api:/me' }).map((i) => i.path)).toEqual([
+      ['apiBaseUrl'],
+    ])
+  })
+})

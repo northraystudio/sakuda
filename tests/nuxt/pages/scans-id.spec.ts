@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { nextTick, ref } from 'vue'
 import ScanPage from '~/pages/scans/[id].vue'
 import { engineRunFixture, findingFixture, scanDetailFixture } from '../helpers/fixtures'
@@ -203,6 +203,55 @@ describe('pages/scans/[id]', () => {
       polling.state.value = scanDetailFixture({ status: 'done' })
       const wrapper = await mountPage()
       expect(wrapper.find('[data-testid="scan-finale"]').exists()).toBe(false)
+    })
+  })
+
+  describe('lost login and stop (#74)', () => {
+    it('shows the lost-login notice with where and what the check got', async () => {
+      polling.state.value = scanDetailFixture({
+        status: 'running',
+        authLost: { detectedAt: '2026-01-01T00:03:00.000Z', path: 'api:/me', status: 401 },
+      })
+      const wrapper = await mountPage()
+      const notice = wrapper.find('[data-testid="auth-lost-notice"]')
+      expect(notice.exists()).toBe(true)
+      expect(notice.text()).toContain('api:/me')
+      expect(notice.text()).toContain('401')
+    })
+
+    it('shows no notice while the login holds', async () => {
+      polling.state.value = scanDetailFixture({ status: 'running' })
+      const wrapper = await mountPage()
+      expect(wrapper.find('[data-testid="auth-lost-notice"]').exists()).toBe(false)
+    })
+
+    it('offers Stop only while the scan runs, and posts the cancel request', async () => {
+      const cancel = vi.fn(() => ({ id: 'scan-1', cancelRequested: true }))
+      const unregister = registerEndpoint('/api/scans/scan-1/cancel', {
+        method: 'POST',
+        handler: cancel,
+      })
+      try {
+        polling.state.value = scanDetailFixture({ status: 'running' })
+        const wrapper = await mountPage()
+        const stop = wrapper.find('[data-testid="scan-stop"]')
+        expect(stop.exists()).toBe(true)
+        await stop.trigger('click')
+        await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(1))
+        expect(wrapper.find('[data-testid="scan-stop"]').text()).toBe('Stopping…')
+
+        polling.state.value = scanDetailFixture({ status: 'failed', error: 'cancelled by user' })
+        await nextTick()
+        expect(wrapper.find('[data-testid="scan-stop"]').exists()).toBe(false)
+      } finally {
+        unregister()
+      }
+    })
+
+    it('shows no Stop button for a finished scan', async () => {
+      polling.state.value = scanDetailFixture({ status: 'done' })
+      const wrapper = await mountPage()
+      expect(wrapper.find('[data-testid="scan-stop"]').exists()).toBe(false)
     })
   })
 })

@@ -466,6 +466,17 @@ stop early. Requires Docker Desktop
 (macOS / Windows) or sakuda running on the host; on Linux Docker,
 `host.docker.internal` does not reach a Chrome bound to 127.0.0.1.
 
+**Login lost mid-scan.** A login can stop working while a scan runs (the app
+rotates a refresh token, an engine hits logout). Set **Login check path** in
+**Edit site → Authentication** to a page or API that answers 401/403 when
+logged out (`/account`, or `api:/me` for the API base URL). During a scan
+sakuda requests it with the site's headers at the start and then every
+minute; the first 401/403 is recorded on the scan (`authLost` in the scan
+API, a notice on the scan page). The scan keeps running — press **Stop scan**
+(`POST /api/scans/:id/cancel`) to end it; it is marked `failed` with
+`cancelled by user`, and findings already saved are kept. Only header-based
+auth (Cookie / Authorization) can be checked; leave the path empty to skip.
+
 **Discovery seeds.** _Discovery seed paths_ (one per line, hash routes such
 as `/#/search?q=apple` are fine) start one Ajax spider each; empty falls
 back to the ZAP frontend seed path.
