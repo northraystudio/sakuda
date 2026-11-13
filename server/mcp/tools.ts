@@ -3,8 +3,12 @@ import { z } from 'zod'
 import type { TimeBudgetEnv } from '../domain/engineTimeBudget'
 import { toSiteSnapshot } from '../domain/siteView'
 import { logger } from '../lib/logger'
+import { checkSavedSiteAuth } from '../services/authCheckService'
+import type { AuthCheckSend } from '../services/authWatch'
 import { ServiceError } from '../services/errors'
+import type { JobLoop } from '../services/jobLoop'
 import { getScanDetail } from '../services/reportService'
+import { cancelRunningScan } from '../services/scanCancel'
 import { createScan, listScans } from '../services/scanService'
 import {
   addSiteTargets,
@@ -34,6 +38,10 @@ import { findExpiryProblems, formatExpiryWarning } from '#shared/utils/secretExp
 export interface McpToolDeps {
   site: SiteServiceDeps
   timeBudgetEnv: TimeBudgetEnv
+  /** Sends one login check (#74, `check_auth`). */
+  authCheckSend: AuthCheckSend
+  /** The running job loop, or null when the job runner is off (`cancel_scan`). */
+  jobLoop: () => Pick<JobLoop, 'cancelScan'> | null
 }
 
 /** Per-request facts the HTTP layer established. `authenticated` is true only
@@ -146,7 +154,9 @@ const SITE_FIELDS_NOTE =
   'Confirming a non-local target ' +
   '(nonLocalConfirmed) and enabling active checks (allowMutatingRequests, ' +
   'nucleiEnabledRiskTags) and allowing extra OpenAPI origins (openapiAllowedOrigins) ' +
-  'can only be done in the sakuda UI.'
+  'can only be done in the sakuda UI. authCheckPath ("/path", or "api:/path" for the API ' +
+  'base URL; null = off) is a page that answers 401/403 when logged out: scans poll it and ' +
+  'record authLost on the scan when the login stops working — verify it with check_auth.'
 
 /** A schema rejection, except that the missing non-local confirmation gets
  * its own code: an agent cannot fix it by retrying, only the user can. */
@@ -289,6 +299,9 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
       description:
         'Get a scan’s status, per-engine runs and the diff against the previous finished scan ' +
         '(new/persisting counts and the resolved findings). Use list_findings for the findings. ' +
+        'authLost is set (time, path, status) when the site’s login check saw 401/403 during ' +
+        'the scan: results after that time may be from a logged-out session — cancel_scan ' +
+        'stops a running scan. ' +
         `${UNTRUSTED_NOTE} ${REVEAL_NOTE}`,
       inputSchema: z.object({ scanId: z.string().min(1), reveal: z.boolean().optional() }),
       annotations: readOnly,
@@ -511,6 +524,49 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
           )
         return { ...scan, warnings: problems.map(formatExpiryWarning) }
       })
+    },
+  )
+
+  server.registerTool(
+    'cancel_scan',
+    {
+      description:
+        'Stop the scan that is running now (e.g. after get_scan shows authLost). The current ' +
+        'engine is stopped, findings already saved are kept, and the scan ends as failed with ' +
+        'error "cancelled by user". Only a running scan can be stopped (SCAN_NOT_RUNNING ' +
+        'otherwise); poll get_scan to see it finish.',
+      inputSchema: z.object({ scanId: z.string().min(1) }),
+      annotations: { ...writes, destructiveHint: true, idempotentHint: true },
+    },
+    ({ scanId }) =>
+      write(() => {
+        cancelRunningScan(db, deps.jobLoop(), scanId)
+        logger.info({ operation: 'mcp.cancel_scan', scanId }, 'scan stop requested')
+        return { id: scanId, cancelRequested: true }
+      }),
+  )
+
+  server.registerTool(
+    'check_auth',
+    {
+      description:
+        'Send the site’s login check once, with its saved headers, and report the verdict: ' +
+        'ok (2xx), rejected (401/403 — the saved login does not work), redirect (3xx — a ' +
+        'scan cannot detect a lost login on this path; pick one that answers 401/403), ' +
+        'unexpected (another status) or no-answer (timeout / connection error). Requires ' +
+        'authCheckPath on the site. Header values are never returned.',
+      inputSchema: z.object({ siteId: z.string().min(1) }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ siteId }) => {
+      try {
+        return ok(
+          await checkSavedSiteAuth({ site: deps.site, send: deps.authCheckSend, logger }, siteId),
+        )
+      } catch (e) {
+        if (e instanceof ServiceError) return refused(`${e.code}: ${e.message}`)
+        throw e
+      }
     },
   )
 

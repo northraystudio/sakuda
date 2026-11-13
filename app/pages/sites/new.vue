@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import SiteForm from '~/components/site/SiteForm.vue'
-import type { SiteUpdateInput } from '#shared/schemas/site'
-import type { SitePublic } from '#shared/types/api'
+import type { AuthCheckInput, SiteUpdateInput } from '#shared/schemas/site'
+import type { AuthCheckResult, SitePublic } from '#shared/types/api'
 
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -18,6 +18,10 @@ async function handleSubmit(payload: SiteUpdateInput) {
     submitting.value = false
   }
 }
+
+/** Login check (#74) for a site not saved yet. */
+const checkAuth = (input: AuthCheckInput) =>
+  $fetch<AuthCheckResult>('/api/auth-check', { method: 'POST', body: input })
 </script>
 
 <template>
@@ -28,6 +32,7 @@ async function handleSubmit(payload: SiteUpdateInput) {
       :submitting="submitting"
       :error-message="errorMessage"
       cancel-to="/"
+      :check-auth="checkAuth"
       @submit="handleSubmit"
     />
   </div>

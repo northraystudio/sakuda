@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isLoginRejected, resolveAuthCheckUrl } from '../authCheck'
+import { classifyAuthStatus, isLoginRejected, resolveAuthCheckUrl } from '../authCheck'
 
 const site = {
   frontBaseUrl: 'http://localhost:3000',
@@ -41,5 +41,20 @@ describe('isLoginRejected', () => {
 
   it.each([200, 204, 302, 404, 500])('does not treat %i as a lost login', (status) => {
     expect(isLoginRejected(status)).toBe(false)
+  })
+})
+
+describe('classifyAuthStatus', () => {
+  it.each([
+    [200, 'ok'],
+    [204, 'ok'],
+    [401, 'rejected'],
+    [403, 'rejected'],
+    [301, 'redirect'],
+    [302, 'redirect'],
+    [404, 'unexpected'],
+    [500, 'unexpected'],
+  ] as const)('reads %i as %s', (status, outcome) => {
+    expect(classifyAuthStatus(status)).toBe(outcome)
   })
 })

@@ -137,6 +137,16 @@ export interface ScanSummary {
   authLost: ScanAuthLost | null
   counts: SeverityCounts
 }
+/** Verdict of a one-off login check (#74): `ok` 2xx, `rejected` 401/403,
+ * `redirect` 3xx, `unexpected` any other status, `no-answer` timeout or
+ * connection error. */
+export type AuthCheckOutcome = 'ok' | 'rejected' | 'redirect' | 'unexpected' | 'no-answer'
+export interface AuthCheckResult {
+  outcome: AuthCheckOutcome
+  /** null when there was no answer. */
+  status: number | null
+  path: string
+}
 /** What the scan's auth check saw when the login stopped working: when, at
  * which `[api:]/path`, and the status it got. No header or cookie values. */
 export interface ScanAuthLost {

@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import DiscoveryPanel from '~/components/site/DiscoveryPanel.vue'
 import SiteForm from '~/components/site/SiteForm.vue'
-import type { SiteUpdateInput } from '#shared/schemas/site'
-import type { CaptureResult, CaptureStart, SitePublic, SiteSecrets } from '#shared/types/api'
+import type { AuthCheckInput, SiteUpdateInput } from '#shared/schemas/site'
+import type {
+  AuthCheckResult,
+  CaptureResult,
+  CaptureStart,
+  SitePublic,
+  SiteSecrets,
+} from '#shared/types/api'
 
 const route = useRoute()
 // `route.params.id` is `string | string[]` generically; this route only has
@@ -41,6 +47,10 @@ function loadSecrets(): Promise<SiteSecrets> {
   return $fetch<SiteSecrets>(`/api/sites/${siteId}/secrets`)
 }
 
+/** Login check (#74): the edited values; empty header rows use the stored ones. */
+const checkAuth = (input: AuthCheckInput) =>
+  $fetch<AuthCheckResult>(`/api/sites/${siteId}/auth-check`, { method: 'POST', body: input })
+
 /** Auth capture through the host Chrome (#17); loopback-only routes. */
 const capture = {
   start: () =>
@@ -78,6 +88,7 @@ async function handleDelete() {
         :cancel-to="`/sites/${siteId}`"
         :load-secrets="loadSecrets"
         :capture="capture"
+        :check-auth="checkAuth"
         @submit="handleSubmit"
       >
         <template #targets>

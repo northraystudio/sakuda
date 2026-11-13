@@ -373,6 +373,60 @@ describe('SiteForm', () => {
     expect(SiteInputSchema.parse(last).authCheckPath).toBe('/account')
   })
 
+  it('Check login sends the form values and shows the verdict in color (#74)', async () => {
+    const checkAuth = vi.fn(async () => ({ outcome: 'ok' as const, status: 200, path: '/me' }))
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null, checkAuth },
+    })
+    const button = wrapper.find('[data-testid="auth-check-run"]')
+    expect(button.attributes('disabled')).toBeDefined() // no path yet
+
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/me')
+    await wrapper.find('[data-testid="auth-check-run"]').trigger('click')
+    await vi.waitFor(() =>
+      expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(true),
+    )
+    expect(checkAuth).toHaveBeenCalledWith({
+      frontBaseUrl: 'http://localhost:3000',
+      apiBaseUrl: null,
+      authCheckPath: '/me',
+      nonLocalConfirmed: false,
+      headers: [],
+    })
+    const result = wrapper.find('[data-testid="auth-check-result"]')
+    expect(result.attributes('data-outcome')).toBe('ok')
+    expect(result.classes()).toContain('border-success')
+
+    // Editing the path makes the shown result stale.
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/account')
+    expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(false)
+  })
+
+  it('explains a redirect, which a scan cannot detect (#74)', async () => {
+    const checkAuth = vi.fn(async () => ({
+      outcome: 'redirect' as const,
+      status: 302,
+      path: '/me',
+    }))
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null, checkAuth },
+    })
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/me')
+    await wrapper.find('[data-testid="auth-check-run"]').trigger('click')
+    await vi.waitFor(() =>
+      expect(wrapper.find('[data-testid="auth-check-result"]').text()).toContain('401/403'),
+    )
+  })
+
+  it('has no Check login button when the page gives no checkAuth (#74)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null },
+    })
+    expect(wrapper.find('[data-testid="auth-check-run"]').exists()).toBe(false)
+  })
+
   it('shows the stored login check path in edit mode (#74)', async () => {
     const wrapper = await mountSuspended(SiteForm, {
       props: {

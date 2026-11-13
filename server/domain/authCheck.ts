@@ -1,5 +1,5 @@
 import { joinUrl } from './hostAlias'
-import type { SitePublic } from '#shared/types/api'
+import type { AuthCheckOutcome, SitePublic } from '#shared/types/api'
 
 /**
  * The URL a scan's auth check GETs (#74), or null when the site has none.
@@ -16,6 +16,17 @@ export function resolveAuthCheckUrl(
   const base = onApi ? site.apiBaseUrl : site.frontBaseUrl
   if (!base) return null
   return joinUrl(base, onApi ? raw.slice('api:'.length) : raw)
+}
+
+/** How a one-off check (the form's Check button, MCP `check_auth`) reads a
+ * status. A redirect is called out on its own: a site that answers a
+ * logged-out request with 302 cannot be watched through this path, since
+ * the scan only treats 401/403 as a lost login. */
+export function classifyAuthStatus(status: number): Exclude<AuthCheckOutcome, 'no-answer'> {
+  if (isLoginRejected(status)) return 'rejected'
+  if (status >= 200 && status < 300) return 'ok'
+  if (status >= 300 && status < 400) return 'redirect'
+  return 'unexpected'
 }
 
 /** 401 / 403 is the target saying "not logged in" — anything else (2xx, a

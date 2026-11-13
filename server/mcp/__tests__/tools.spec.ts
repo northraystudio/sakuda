@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
@@ -8,6 +8,7 @@ import { engineRuns, findings, scans, sites } from '../../db/schema'
 import { createSiteCipher } from '../../domain/headerCipher'
 import { createScan } from '../../services/scanService'
 import { createSite, loadSiteWithHeaders, type SiteServiceDeps } from '../../services/siteService'
+import type { AuthCheckSend } from '../../services/authWatch'
 import { AGENT_SITE_FIELDS, createSakudaMcpServer, type McpRequestContext } from '../tools'
 import { SiteInputSchema, SiteUpdateSchema } from '#shared/schemas/site'
 
@@ -23,6 +24,10 @@ const timeBudgetEnv = {
 
 let deps: SiteServiceDeps
 let n = 0
+/** What `check_auth` sends through; a test sets the status it answers. */
+let authCheckSend: ReturnType<typeof vi.fn<AuthCheckSend>>
+/** The job loop `cancel_scan` reaches; null = job runner off. */
+let jobLoop: { cancelScan: ReturnType<typeof vi.fn<(scanId: string) => boolean>> } | null
 let client: Client | undefined
 
 beforeEach(() => {
@@ -33,6 +38,8 @@ beforeEach(() => {
     now: () => new Date('2026-01-01T00:00:00Z'),
     id: () => `id-${++n}`,
   }
+  authCheckSend = vi.fn<AuthCheckSend>(async () => 200)
+  jobLoop = { cancelScan: vi.fn(() => true) }
 })
 
 afterEach(async () => {
@@ -41,7 +48,10 @@ afterEach(async () => {
 })
 
 async function connect(ctx: McpRequestContext = { authenticated: false }): Promise<Client> {
-  const server = createSakudaMcpServer({ site: deps, timeBudgetEnv }, ctx)
+  const server = createSakudaMcpServer(
+    { site: deps, timeBudgetEnv, authCheckSend, jobLoop: () => jobLoop },
+    ctx,
+  )
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   await server.connect(serverTransport)
   client = new Client({ name: 'test', version: '1.0.0' })
@@ -115,12 +125,13 @@ function seed() {
 }
 
 describe('sakuda MCP tools', () => {
-  it('lists the five read-only tools and the six write tools', async () => {
+  it('lists the six read-only tools and the seven write tools', async () => {
     const c = await connect()
     const { tools } = await c.listTools()
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name)
     const writes = tools.filter((t) => t.annotations?.readOnlyHint === false).map((t) => t.name)
     expect(readOnly.sort()).toEqual([
+      'check_auth',
       'get_scan',
       'get_site',
       'list_findings',
@@ -129,6 +140,7 @@ describe('sakuda MCP tools', () => {
     ])
     expect(writes.sort()).toEqual([
       'add_targets',
+      'cancel_scan',
       'create_site',
       'set_finding_triage',
       'set_openapi',
@@ -700,5 +712,74 @@ describe('sakuda MCP site write tools (#46)', () => {
         'https://shop.example.com/api',
       )
     })
+  })
+})
+
+describe('sakuda MCP login check and stop (#74)', () => {
+  it('check_auth sends the saved headers to the saved path and reports the verdict', async () => {
+    const { site } = seed()
+    deps.db.update(sites).set({ authCheckPath: '/me' }).where(eq(sites.id, site.id)).run()
+    const c = await connect()
+
+    authCheckSend.mockResolvedValueOnce(200)
+    expect((await call(c, 'check_auth', { siteId: site.id })).json).toEqual({
+      outcome: 'ok',
+      status: 200,
+      path: '/me',
+    })
+    expect(authCheckSend).toHaveBeenCalledWith(
+      'http://localhost:3001/me',
+      [{ name: 'Authorization', value: `Bearer ${TOKEN}` }],
+      expect.any(AbortSignal),
+    )
+
+    authCheckSend.mockResolvedValueOnce(401)
+    const rejected = await call(c, 'check_auth', { siteId: site.id })
+    expect(rejected.json.outcome).toBe('rejected')
+    expect(rejected.text).not.toContain(TOKEN)
+
+    authCheckSend.mockResolvedValueOnce(302)
+    expect((await call(c, 'check_auth', { siteId: site.id })).json.outcome).toBe('redirect')
+
+    authCheckSend.mockRejectedValueOnce(new Error('ECONNREFUSED'))
+    expect((await call(c, 'check_auth', { siteId: site.id })).json).toEqual({
+      outcome: 'no-answer',
+      status: null,
+      path: '/me',
+    })
+  })
+
+  it('check_auth refuses a site without a check path, and an unknown site', async () => {
+    const { site } = seed()
+    const c = await connect()
+    const unset = await call(c, 'check_auth', { siteId: site.id })
+    expect(unset.isError).toBe(true)
+    expect(unset.text).toMatch(/^AUTH_CHECK_NOT_SET:/)
+    expect((await call(c, 'check_auth', { siteId: 'nope' })).text).toMatch(/^SITE_NOT_FOUND:/)
+    expect(authCheckSend).not.toHaveBeenCalled()
+  })
+
+  it('cancel_scan stops a running scan through the job loop', async () => {
+    const { site } = seed()
+    const scan = createScan(deps.db, deps, site.id, ['nuclei'])
+    deps.db.update(scans).set({ status: 'running' }).where(eq(scans.id, scan.id)).run()
+    const c = await connect()
+
+    const res = await call(c, 'cancel_scan', { scanId: scan.id })
+    expect(res.json).toEqual({ id: scan.id, cancelRequested: true })
+    expect(jobLoop?.cancelScan).toHaveBeenCalledWith(scan.id)
+  })
+
+  it('cancel_scan refuses a scan that is not running, or when the job runner is off', async () => {
+    const { site, scan: done } = seed()
+    const c = await connect()
+    expect((await call(c, 'cancel_scan', { scanId: done.id })).text).toMatch(/^SCAN_NOT_RUNNING:/)
+
+    const running = createScan(deps.db, deps, site.id, ['nuclei'])
+    deps.db.update(scans).set({ status: 'running' }).where(eq(scans.id, running.id)).run()
+    jobLoop = null
+    expect((await call(c, 'cancel_scan', { scanId: running.id })).text).toMatch(
+      /^SCAN_NOT_RUNNING:/,
+    )
   })
 })

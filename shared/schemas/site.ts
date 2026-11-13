@@ -38,6 +38,14 @@ const HttpOrigin = z
     return url.origin // normalized: lower-case host, default port dropped
   })
 
+/** `/path` on the front base URL or `api:/path` on the API base URL —
+ * never a full URL, so the login check stays on the site's own origins. */
+const AuthCheckPath = z
+  .string()
+  .trim()
+  .max(2_000)
+  .regex(/^(api:)?\/\S*$/, 'must be "/path" or "api:/path"')
+
 const SiteFieldsSchema = z.object({
   name: z.string().trim().min(1).max(100),
   frontBaseUrl: HttpUrl,
@@ -91,17 +99,7 @@ const SiteFieldsSchema = z.object({
   /** `[api:]/path` sakuda GETs with the site's headers during a scan to
    * notice a lost login (#74); empty → no check. Always on the site's own
    * front/API origin — a full URL is rejected. */
-  authCheckPath: z
-    .preprocess(
-      emptyToNull,
-      z
-        .string()
-        .trim()
-        .max(2_000)
-        .regex(/^(api:)?\/\S*$/, 'must be "/path" or "api:/path"')
-        .nullable(),
-    )
-    .default(null),
+  authCheckPath: z.preprocess(emptyToNull, AuthCheckPath.nullable()).default(null),
   headers: HeadersSchema.optional(),
   /** Injected into ZAP's browser before the Ajax spider runs (SPA login state). */
   browserStorage: BrowserStorageSchema.optional(),
@@ -177,5 +175,33 @@ export const SiteUpdateSchema = SiteFieldsSchema.extend({
   browserStorage: BrowserStoragePatchesSchema.optional(),
 }).superRefine(refineSiteFields)
 
+/** `POST /api/auth-check` and `/api/sites/:id/auth-check` (#74): the form's
+ * current values, checked once before saving. Header rows without a value
+ * keep the stored one (edit mode), exactly like a site update. */
+export const AuthCheckInputSchema = z
+  .object({
+    frontBaseUrl: HttpUrl,
+    apiBaseUrl: OptionalHttpUrl,
+    authCheckPath: AuthCheckPath,
+    nonLocalConfirmed: z.boolean().default(false),
+    headers: HeaderPatchesSchema.default([]),
+  })
+  .superRefine((v, ctx) => {
+    if (!v.apiBaseUrl && v.authCheckPath.startsWith('api:'))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['apiBaseUrl'],
+        message: 'apiBaseUrl is required because authCheckPath starts with "api:"',
+      })
+    if (siteRequiresConfirmation(v.frontBaseUrl, v.apiBaseUrl, null) && !v.nonLocalConfirmed)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['nonLocalConfirmed'],
+        message:
+          'target host is not local: confirm you are authorized to scan it (nonLocalConfirmed)',
+      })
+  })
+
+export type AuthCheckInput = z.infer<typeof AuthCheckInputSchema>
 export type SiteInput = z.infer<typeof SiteInputSchema>
 export type SiteUpdateInput = z.infer<typeof SiteUpdateSchema>

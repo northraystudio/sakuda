@@ -8,6 +8,8 @@ import {
 } from 'h3'
 import { getEnv } from '../config/env'
 import { timeBudgetEnv } from '../domain/engineTimeBudget'
+import { fetchAuthStatus } from '../services/authWatch'
+import { getJobLoop } from '../services/jobLoop'
 import { getDb } from '../db/client'
 import { siteDeps } from '../lib/deps'
 import { logger } from '../lib/logger'
@@ -41,7 +43,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const server = createSakudaMcpServer(
-    { site: siteDeps(), timeBudgetEnv: timeBudgetEnv(env) },
+    {
+      site: siteDeps(),
+      timeBudgetEnv: timeBudgetEnv(env),
+      authCheckSend: fetchAuthStatus(env.localhostAlias),
+      jobLoop: getJobLoop,
+    },
     { authenticated: auth.authenticated },
   )
   const transport = new WebStandardStreamableHTTPServerTransport({
