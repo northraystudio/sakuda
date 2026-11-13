@@ -10,7 +10,7 @@ import { runCommand, SpawnError } from '../runCommand'
 import { writeSecretFile } from '../secretFile'
 import { EngineError, type EngineOutput, type EngineRunner } from '../types'
 import { buildDalfoxArgs } from './args'
-import { buildDalfoxConfig } from './config'
+import { buildDalfoxConfig, dalfoxScanTimeoutSec } from './config'
 import {
   dalfoxReachability,
   dalfoxTargetOutcomes,
@@ -103,12 +103,14 @@ export const runDalfox: EngineRunner = async ({ scanId, site, workDir, env, logg
     activeScan: true,
     domXssProbe: false,
   })
-  // Per-target scan-timeout is derived from the whole budget and the number of
-  // concurrent waves, so one slow target cannot consume the run and starve the
-  // rest of the list; runCommand still hard-kills the group at the total budget.
-  const totalBudgetSec = env.dalfox.maxMinutes * 60
-  const waves = Math.max(1, Math.ceil(getUrls.length / env.dalfox.concurrency))
-  const scanTimeoutSec = Math.max(15, Math.floor(totalBudgetSec / waves))
+  // Per-target scan-timeout is derived from the whole budget (see
+  // dalfoxScanTimeoutSec), so one slow target cannot consume the run; runCommand
+  // still hard-kills the group at the total budget.
+  const scanTimeoutSec = dalfoxScanTimeoutSec(
+    env.dalfox.maxMinutes * 60,
+    getUrls.length,
+    env.dalfox.concurrency,
+  )
 
   logger.info(
     {
@@ -253,6 +255,7 @@ export const runDalfox: EngineRunner = async ({ scanId, site, workDir, env, logg
         rateLimit: site.nucleiRateLimit,
         concurrency: env.dalfox.concurrency,
         maxTargets: env.dalfox.maxTargets,
+        scanTimeoutSec,
         timeBudget,
         totalRequests: report.meta.total_requests ?? null,
         incomplete: report.meta.incomplete === true,
