@@ -38,9 +38,24 @@ describe('buildDomXssProbeScript', () => {
     expect(script).toContain('new HistoryReference(session, HistoryReference.TYPE_SCANNER, msg)')
   })
 
-  it('opens the browser on the front origin (getProxiedBrowser navigates there on creation)', () => {
+  it('opens the browser on the front origin right after launch', () => {
     expect(script).toContain('var ORIGIN = "http://host.docker.internal:3000"')
-    expect(script).toContain('extSel.getProxiedBrowser(BROWSER_ID, ORIGIN)')
+    expect(script).toContain('wd.get(ORIGIN)')
+    expect(script.indexOf('extSel.getWebDriver(')).toBeLessThan(script.indexOf('wd.get(ORIGIN)'))
+  })
+
+  it('launches with Selenium scripts run synchronously, so the storage hook finishes first (#71)', () => {
+    expect(script).toContain('.syncScriptExecution(true)')
+    expect(script).not.toContain('extSel.getProxiedBrowser(')
+  })
+
+  it('launches the same browser as getProxiedBrowser did: proxied via ZAP, extensions on', () => {
+    expect(script).toContain('extSel.getWebDriver(\n    BROWSER_ID,')
+    expect(script).toContain('.requester(HttpSender.PROXY_INITIATOR)')
+    expect(script).toContain('.proxyAddress(proxy.getAddress())')
+    expect(script).toContain('.proxyPort(proxy.getPort())')
+    expect(script).toContain('.enableExtensions(true)')
+    expect(script).toContain('getMainProxyServerInfo()')
   })
 
   it('honours the wall-clock deadline and writes a summary file', () => {
