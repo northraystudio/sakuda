@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pino from 'pino'
@@ -113,29 +115,54 @@ describe('runZapApi', () => {
     expect(out.meta.targetUrl).toBe('http://localhost:3000')
   })
 
-  it('uses apiUrl (aliased) when openapiUrl is a URL', async () => {
+  it('fetches the openapiUrl itself and hands ZAP the document as an apiFile (#57)', async () => {
     const fakeBin = writeFakeZap(tmp, FIXTURE)
-    const env = makeEnv({}, fakeBin, tmp)
+    // sakuda's own fetch reaches the test server directly; ZAP still gets the alias.
+    const env = makeEnv(
+      { SAKUDA_LOCALHOST_ALIAS: '', SAKUDA_ZAP_LOCALHOST_ALIAS: 'host.docker.internal' },
+      fakeBin,
+      tmp,
+    )
     const workDir = join(tmp, 'work')
-    const site = baseSite({ openapiUrl: 'http://localhost:3000/openapi.json' })
-
-    const out = await runZapApi({
-      scanId: 'scan-3',
-      engine: 'zap-api',
-      site,
-      workDir,
-      env,
-      logger,
-      signal: new AbortController().signal,
+    const seen: Array<{ url: string | undefined; auth: string | undefined }> = []
+    const server = createServer((req, res) => {
+      seen.push({ url: req.url, auth: req.headers.authorization })
+      res.setHeader('content-type', 'application/json')
+      res.end('{"openapi":"3.0.0","info":{"title":"t","version":"1"},"paths":{}}')
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    // as: listen() on a TCP port always yields an AddressInfo
+    const { port } = server.address() as AddressInfo
+    const site = baseSite({
+      openapiUrl: `http://127.0.0.1:${port}/openapi.json`,
+      headers: [{ name: 'Authorization', value: 'Bearer t' }],
     })
 
+    try {
+      const out = await runZapApi({
+        scanId: 'scan-3',
+        engine: 'zap-api',
+        site,
+        workDir,
+        env,
+        logger,
+        signal: new AbortController().signal,
+      })
+      expect(out.meta.openapiSource).toBe('url')
+    } finally {
+      server.close()
+    }
+
+    expect(seen).toEqual([{ url: '/openapi.json', auth: 'Bearer t' }])
     const plan: unknown = YAML.parse(readFileSync(join(workDir, 'plan.yaml'), 'utf8'))
     // as: plan is Record<string, unknown> at runtime; narrow just enough to assert the openapi job
     const jobs = (plan as { jobs: Array<{ type: string; parameters: Record<string, unknown> }> })
       .jobs
     const openapiJob = jobs.find((j) => j.type === 'openapi')
-    expect(openapiJob?.parameters.apiUrl).toBe('http://host.docker.internal:3000/openapi.json')
-    expect(out.meta.openapiSource).toBe('url')
+    expect(openapiJob?.parameters.apiFile).toBe(join(workDir, 'openapi-url.json'))
+    expect(openapiJob?.parameters).not.toHaveProperty('apiUrl')
+    // The fetched document is a secret file: removed once ZAP is done.
+    expect(existsSync(join(workDir, 'openapi-url.json'))).toBe(false)
     // No browser is launched for an API scan, so no Firefox pref (-config) is passed.
     const argv = JSON.parse(readFileSync(join(workDir, 'argv.json'), 'utf8')) as string[]
     expect(argv).not.toContain('-config')
@@ -237,7 +264,7 @@ describe('runZapApi', () => {
     const fakeBin = writeFakeZap(tmp, FIXTURE)
     const env = makeEnv({}, fakeBin, tmp)
     const workDir = join(tmp, 'work')
-    const site = baseSite({ openapiUrl: 'http://localhost:3000/openapi.json' })
+    const site = baseSite({ openapiJson: '{"openapi":"3.0.0","paths":{}}' })
     process.env.FAKE_ZAP_NO_REPORT = '1'
     try {
       await expect(
