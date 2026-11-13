@@ -74,6 +74,8 @@ export interface SitePublic {
   /** Extra origins (besides front/API) an MCP `set_openapi` may point a
    * non-local openapiUrl at. Set in the UI only (#27). */
   openapiAllowedOrigins: string[]
+  /** `[api:]/path` polled during a scan to notice a lost login (#74); null → off. */
+  authCheckPath: string | null
   headerNames: string[]
   /** kind + name of each injected browser-storage item; values are write-only. */
   browserStorageNames: BrowserStorageName[]
@@ -131,7 +133,26 @@ export interface ScanSummary {
   startedAt: string | null
   finishedAt: string | null
   error: string | null
+  /** Set once the auth check saw the login rejected mid-scan (#74). */
+  authLost: ScanAuthLost | null
   counts: SeverityCounts
+}
+/** Verdict of a one-off login check (#74): `ok` 2xx, `rejected` 401/403,
+ * `redirect` 3xx, `unexpected` any other status, `no-answer` timeout or
+ * connection error. */
+export type AuthCheckOutcome = 'ok' | 'rejected' | 'redirect' | 'unexpected' | 'no-answer'
+export interface AuthCheckResult {
+  outcome: AuthCheckOutcome
+  /** null when there was no answer. */
+  status: number | null
+  path: string
+}
+/** What the scan's auth check saw when the login stopped working: when, at
+ * which `[api:]/path`, and the status it got. No header or cookie values. */
+export interface ScanAuthLost {
+  detectedAt: string
+  path: string
+  status: number
 }
 /** `POST /api/sites/:id/scans` answer: the queued scan plus non-blocking
  * warnings (expired / soon-expiring auth secrets, #17). */

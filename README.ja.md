@@ -454,6 +454,20 @@ sakuda は **Capture** の後にその Chrome を終了させます。途中で�
 （macOS / Windows）か、ホストで動かす sakuda が前提です。Linux の Docker では、
 `host.docker.internal` から 127.0.0.1 に bind した Chrome に届きません。
 
+**診断中のログイン切れ。** 診断の途中でログインが無効になることがあります（アプリが
+リフレッシュトークンを更新した、エンジンがログアウトを叩いた など）。**Edit site →
+Authentication** の **Login check path** に、ログアウト状態で 401/403 を返すページか API
+（`/account`、API base URL 側なら `api:/me`）を設定すると、sakuda は診断の開始時と、
+その後 1 分ごとにサイトのヘッダ付きでそこへリクエストします。最初に 401/403 を受けた
+時点をスキャンに記録します（スキャン API の `authLost`、スキャン画面の警告）。診断は
+そのまま続くので、止めるときは **Stop scan**（`POST /api/scans/:id/cancel`）を押して
+ください。スキャンは `failed`（`cancelled by user`）になり、保存済みの検出結果は
+残ります。確認できるのはヘッダで送る認証（Cookie / Authorization）だけです。空欄なら
+確認しません。欄の横の **Check login** を押すと、フォームに入力中の値（保存前で可。値が
+空欄のヘッダは保存済みの値を使用）で1回確認し、結果を表示します。2xx は緑、401/403 は赤です。
+3xx の転送には注意書きを出します — 401/403 ではなく転送で答えるパスでは、診断中のログイン
+切れを検知できないためです。
+
 **ディスカバリのシード。** _Discovery seed paths_（1 行 1 つ。`/#/search?q=apple`
 のようなハッシュルートも可）はそれぞれ Ajax spider を 1 つ起動します。空の場合は
 ZAP frontend のシードパスにフォールバックします。
@@ -547,7 +561,10 @@ Claude Desktop には、リモートのサーバーに固定のヘッダーを�
 
 ### ツールと秘密値
 
-読み取りツール: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`。
+読み取りツール: `list_sites`, `get_site`, `list_scans`, `get_scan`（診断中にログイン確認が
+失敗したら `authLost` が入る）, `list_findings`, `check_auth`（保存済みのヘッダでサイトの
+ログイン確認を1回送り、`ok` / `rejected` / `redirect` / `unexpected` / `no-answer` を返す。
+ヘッダの値は返しません）。
 
 書き込みツールは UI と同じ検証・チェックを通ります。
 
@@ -568,6 +585,8 @@ Claude Desktop には、リモートのサーバーに固定のヘッダーを�
   判定はサイトと検出結果の指紋（スキャン差分と同じキー）ごとに保存され、`false-positive` /
   `accepted` は以後のスキャンで「新規」に数えません。スキャン画面に判定と理由が出ます。
   取り消すときは `confirmed` を設定します。判定の書き込みは MCP からのみです。
+- `cancel_scan` — 実行中のスキャンを止める（`get_scan` に `authLost` が出たときなど）。
+  `failed`（`cancelled by user`）で終わり、保存済みの検出結果は残ります。実行中でなければ拒否します。
 
 同じ対象・OpenAPI・判定を再送しても結果は変わりません。
 

@@ -3,8 +3,9 @@ import { computed, reactive, ref, watch } from 'vue'
 import type { BrowserStorageKind, BrowserStoragePatch } from '#shared/schemas/browserStorage'
 import { BROWSER_STORAGE_KINDS } from '#shared/schemas/browserStorage'
 import type { HeaderPatch } from '#shared/schemas/headers'
-import type { SiteUpdateInput } from '#shared/schemas/site'
+import type { AuthCheckInput, SiteUpdateInput } from '#shared/schemas/site'
 import type {
+  AuthCheckResult,
   CapturedHeader,
   CapturedStorageItem,
   CaptureResult,
@@ -33,6 +34,9 @@ const props = defineProps<{
     start: () => Promise<CaptureStart>
     finish: (targetId: string) => Promise<CaptureResult>
   }
+  /** Sends the login check once with the values being edited (#74). The
+   * page decides the route (new site vs. stored site). */
+  checkAuth?: (input: AuthCheckInput) => Promise<AuthCheckResult>
 }>()
 
 /** In create mode every header row carries its value, so the payload is
@@ -78,6 +82,8 @@ const form = reactive({
   nucleiTags: [...(props.initial?.nucleiTags ?? [])] as NucleiTag[],
   // One origin per line; the server validates and normalizes each (#27).
   openapiAllowedOrigins: (props.initial?.openapiAllowedOrigins ?? []).join('\n'),
+  // '' = no auth check during scans (#74).
+  authCheckPath: props.initial?.authCheckPath ?? '',
 })
 
 // Target paths has a second writer on the Edit page: the discovery panel in
@@ -311,6 +317,81 @@ const captureError = ref<string | null>(null)
 const captureNote = ref<string | null>(null)
 const captureSkipped = ref<CaptureResult['skipped']>([])
 
+// Login check (#74): one request with the form's current path and headers.
+const authCheckBusy = ref(false)
+const authCheckResult = ref<AuthCheckResult | null>(null)
+const authCheckError = ref<string | null>(null)
+const canCheckAuth = computed(
+  () => !!props.checkAuth && form.authCheckPath.trim() !== '' && form.frontBaseUrl.trim() !== '',
+)
+// A result describes the values it was run with; editing them makes it stale.
+watch(
+  () => [form.authCheckPath, form.frontBaseUrl, form.apiBaseUrl, headerRows],
+  () => {
+    authCheckResult.value = null
+    authCheckError.value = null
+  },
+  // deep: a header row's name or value edited in place, or a row added/removed.
+  { deep: true },
+)
+
+async function runAuthCheck() {
+  if (!props.checkAuth || !canCheckAuth.value) return
+  authCheckBusy.value = true
+  authCheckResult.value = null
+  authCheckError.value = null
+  try {
+    authCheckResult.value = await props.checkAuth({
+      frontBaseUrl: form.frontBaseUrl,
+      apiBaseUrl: emptyToNull(form.apiBaseUrl),
+      authCheckPath: form.authCheckPath.trim(),
+      nonLocalConfirmed: form.nonLocalConfirmed,
+      headers: headerRows.map(toHeaderPatch).filter((h) => h !== null),
+    })
+  } catch (err) {
+    authCheckError.value = toApiErrorMessage(err)
+  } finally {
+    authCheckBusy.value = false
+  }
+}
+
+/** Plain-language verdict per outcome; the color comes from the class. */
+const authCheckView = computed(() => {
+  const r = authCheckResult.value
+  if (!r) return null
+  switch (r.outcome) {
+    case 'ok':
+      return {
+        cls: 'border-success text-success',
+        text: `Logged in — ${r.path} answered ${r.status}.`,
+      }
+    case 'rejected':
+      return {
+        cls: 'border-sale text-sale',
+        text: `Not logged in — ${r.path} answered ${r.status}. Check the headers above.`,
+      }
+    case 'redirect':
+      return {
+        cls: 'border-hairline text-ink',
+        text: `${r.path} answered ${r.status} (redirect). A scan only treats 401/403 as a lost login, so it cannot notice one on this path — pick a page or API that answers 401/403 when logged out.`,
+      }
+    case 'unexpected':
+      return {
+        cls: 'border-hairline text-ink',
+        text: `${r.path} answered ${r.status}. Check the path is right.`,
+      }
+    case 'no-answer':
+      return {
+        cls: 'border-hairline text-mute',
+        text: `No answer from ${r.path} (timeout or connection error). Check the base URL is reachable from sakuda.`,
+      }
+    default: {
+      const unreachable: never = r.outcome
+      return unreachable
+    }
+  }
+})
+
 async function startCaptureLogin() {
   if (!props.capture) return
   captureBusy.value = true
@@ -469,6 +550,7 @@ function buildPayload(): SiteUpdateInput {
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line !== ''),
+    authCheckPath: emptyToNull(form.authCheckPath),
   }
   return {
     ...base,
@@ -792,6 +874,58 @@ function handleSubmit() {
             Add item
           </button>
         </div>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <label for="site-auth-check-path" class="text-caption-md font-medium text-ink"
+          >Login check path <span class="text-mute">(optional)</span></label
+        >
+        <input
+          id="site-auth-check-path"
+          v-model="form.authCheckPath"
+          data-testid="auth-check-path"
+          type="text"
+          placeholder="api:/me"
+          class="input-pill"
+        />
+        <div v-if="checkAuth" class="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            data-testid="auth-check-run"
+            class="btn-secondary"
+            :disabled="!canCheckAuth || authCheckBusy"
+            @click="runAuthCheck"
+          >
+            {{ authCheckBusy ? 'Checking…' : 'Check login' }}
+          </button>
+          <span class="text-caption-sm text-mute"
+            >Uses the values in this form — no need to save first.</span
+          >
+        </div>
+        <p
+          v-if="authCheckView"
+          data-testid="auth-check-result"
+          :data-outcome="authCheckResult?.outcome"
+          role="status"
+          class="bg-soft-cloud text-caption-md border-l-4 px-4 py-2"
+          :class="authCheckView.cls"
+        >
+          {{ authCheckView.text }}
+        </p>
+        <p
+          v-if="authCheckError"
+          data-testid="auth-check-error"
+          role="alert"
+          class="text-caption-sm text-sale"
+        >
+          {{ authCheckError }}
+        </p>
+        <p class="text-caption-sm text-mute">
+          A page or API that answers 401/403 when logged out. During a scan sakuda requests it with
+          the headers above every minute and flags the scan if the login stops working. Prefix
+          <code class="font-mono">api:</code> to use the API base URL. Leave empty to skip the
+          check.
+        </p>
       </div>
     </fieldset>
 

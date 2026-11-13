@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AuthCheckInputSchema,
   OPENAPI_ALLOWED_ORIGINS_MAX,
   SiteInputSchema,
   SiteUpdateSchema,
@@ -335,6 +336,74 @@ describe('SiteInputSchema', () => {
     expect(create.success).toBe(false)
     expect(create.error?.issues.some((i) => i.path.join('.') === 'browserStorage.0.value')).toBe(
       true,
+    )
+  })
+})
+
+describe('authCheckPath (#74)', () => {
+  it('defaults to null and turns an empty string into null', () => {
+    expect(SiteInputSchema.parse(minimal).authCheckPath).toBeNull()
+    expect(SiteInputSchema.parse({ ...minimal, authCheckPath: '  ' }).authCheckPath).toBeNull()
+  })
+
+  it('accepts a front path and, with an API base URL, an api: path', () => {
+    expect(SiteInputSchema.parse({ ...minimal, authCheckPath: ' /account ' }).authCheckPath).toBe(
+      '/account',
+    )
+    expect(
+      SiteInputSchema.parse({
+        ...minimal,
+        apiBaseUrl: 'http://localhost:3001',
+        authCheckPath: 'api:/me',
+      }).authCheckPath,
+    ).toBe('api:/me')
+  })
+
+  it('rejects a full URL, which could point the check off the site', () => {
+    expect(
+      issuesFor({ ...minimal, authCheckPath: 'https://evil.example/me' }).map((i) => i.path),
+    ).toEqual([['authCheckPath']])
+  })
+
+  it('requires an API base URL for an api: path', () => {
+    expect(issuesFor({ ...minimal, authCheckPath: 'api:/me' }).map((i) => i.path)).toEqual([
+      ['apiBaseUrl'],
+    ])
+  })
+})
+
+describe('AuthCheckInputSchema (#74)', () => {
+  const input = { frontBaseUrl: 'http://localhost:3000', authCheckPath: '/me' }
+
+  it('accepts the form values and defaults headers to none', () => {
+    expect(AuthCheckInputSchema.parse(input)).toEqual({
+      ...input,
+      apiBaseUrl: null,
+      nonLocalConfirmed: false,
+      headers: [],
+    })
+  })
+
+  it('requires a path, and rejects a full URL', () => {
+    expect(AuthCheckInputSchema.safeParse({ ...input, authCheckPath: '' }).success).toBe(false)
+    expect(
+      AuthCheckInputSchema.safeParse({ ...input, authCheckPath: 'https://evil.example/' }).success,
+    ).toBe(false)
+  })
+
+  it('refuses a non-local host until it is confirmed, like a scan', () => {
+    const remote = { ...input, frontBaseUrl: 'https://shop.example.com' }
+    const r = AuthCheckInputSchema.safeParse(remote)
+    expect(r.success).toBe(false)
+    if (!r.success) expect(r.error.issues.map((i) => i.path)).toEqual([['nonLocalConfirmed']])
+    expect(AuthCheckInputSchema.safeParse({ ...remote, nonLocalConfirmed: true }).success).toBe(
+      true,
+    )
+  })
+
+  it('requires an API base URL for an api: path', () => {
+    expect(AuthCheckInputSchema.safeParse({ ...input, authCheckPath: 'api:/me' }).success).toBe(
+      false,
     )
   })
 })

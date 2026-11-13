@@ -14,7 +14,7 @@ import { EngineError, type EngineOutput, type EngineRunner } from '../../engines
 import { logger } from '../../lib/logger'
 import { createSite, type SiteServiceDeps } from '../siteService'
 import { createScan } from '../scanService'
-import { runScan, type ScanRunnerDeps } from '../scanRunner'
+import { runScan, USER_CANCEL_REASON, type ScanRunnerDeps } from '../scanRunner'
 import { SiteInputSchema } from '#shared/schemas/site'
 import { emptyCounts } from '#shared/utils/severity'
 import type { Engine } from '#shared/types/api'
@@ -298,5 +298,113 @@ describe('runScan', () => {
     const scanRow = db.select().from(scans).where(eq(scans.id, scan.id)).get()
     expect(scanRow?.status).toBe('failed')
     expect(scanRow?.error).toBe('site was deleted before the scan started')
+  })
+
+  describe('auth check (#74)', () => {
+    const finding = (engine: Engine) => ({
+      engine,
+      ruleId: 'r',
+      name: 'n',
+      severity: 'high' as const,
+      url: 'http://localhost:3001/a',
+      method: null,
+      param: null,
+      evidence: null,
+      description: null,
+      solution: null,
+      reference: null,
+      raw: {},
+    })
+
+    it('records a login lost mid-scan on the scan, keeping the scan running to the end', async () => {
+      const site = createSite(siteDeps, { ...base, authCheckPath: '/me' })
+      const scan = createScan(db, { now, id }, site.id, ['nuclei', 'zap-fe'])
+      let status = 200
+      const send = vi.fn(async () => status)
+      const deps = {
+        ...makeDeps({
+          // The login breaks while nuclei runs; wait until the check sees it.
+          nuclei: vi.fn(async () => {
+            status = 401
+            await vi.waitFor(
+              () =>
+                expect(
+                  db.select().from(scans).where(eq(scans.id, scan.id)).get()?.authLost,
+                ).not.toBeNull(),
+              { timeout: 2000, interval: 5 },
+            )
+            return successOutput()
+          }),
+        }),
+        authCheck: { send, intervalMs: 5 },
+      }
+
+      await runScan(deps, scan.id, new AbortController().signal)
+
+      const row = db.select().from(scans).where(eq(scans.id, scan.id)).get()
+      expect(row?.authLost).toEqual({
+        detectedAt: '2026-02-01T00:00:00.000Z',
+        path: '/me',
+        status: 401,
+      })
+      expect(row?.status).toBe('done')
+      expect(send).toHaveBeenCalledWith('http://localhost:3001/me', [], expect.any(AbortSignal))
+    })
+
+    it('never checks, and leaves authLost null, when the site has no check path', async () => {
+      const site = createSite(siteDeps, base)
+      const scan = createScan(db, { now, id }, site.id, ['nuclei'])
+      const send = vi.fn(async () => 401)
+
+      await runScan(
+        { ...makeDeps({}), authCheck: { send, intervalMs: 5 } },
+        scan.id,
+        new AbortController().signal,
+      )
+
+      expect(send).not.toHaveBeenCalled()
+      const row = db.select().from(scans).where(eq(scans.id, scan.id)).get()
+      expect(row?.authLost).toBeNull()
+      expect(row?.status).toBe('done')
+    })
+
+    it('ends a user-cancelled scan as failed "cancelled by user" and keeps earlier findings', async () => {
+      const site = createSite(siteDeps, base)
+      const scan = createScan(db, { now, id }, site.id, ['nuclei', 'zap-fe', 'zap-api'])
+      const ac = new AbortController()
+      const nuclei = vi.fn(async () => successOutput())
+      const deps = makeDeps({
+        // Order is zap-api → zap-fe → nuclei (ENGINE_ORDER).
+        'zap-api': vi.fn(async () =>
+          successOutput({
+            findings: [finding('zap-api')],
+            counts: { critical: 0, high: 1, medium: 0, low: 0, info: 0 },
+          }),
+        ),
+        // zap-fe is running when the user stops the scan.
+        'zap-fe': vi.fn(
+          ({ signal }) =>
+            new Promise<EngineOutput>((_resolve, reject) => {
+              signal.addEventListener('abort', () =>
+                reject(new EngineError('aborted: server shutting down')),
+              )
+              ac.abort(USER_CANCEL_REASON)
+            }),
+        ),
+        nuclei,
+      })
+
+      await runScan(deps, scan.id, ac.signal)
+
+      const row = db.select().from(scans).where(eq(scans.id, scan.id)).get()
+      expect(row?.status).toBe('failed')
+      expect(row?.error).toBe('cancelled by user')
+      const runs = db.select().from(engineRuns).where(eq(engineRuns.scanId, scan.id)).all()
+      expect(runs.find((r) => r.engine === 'zap-fe')?.error).toBe('cancelled by user')
+      expect(runs.find((r) => r.engine === 'zap-api')?.status).toBe('done')
+      expect(runs.some((r) => r.engine === 'nuclei')).toBe(false)
+      expect(nuclei).not.toHaveBeenCalled()
+      expect(db.select().from(findings).where(eq(findings.scanId, scan.id)).all()).toHaveLength(1)
+    })
   })
 })

@@ -466,6 +466,22 @@ stop early. Requires Docker Desktop
 (macOS / Windows) or sakuda running on the host; on Linux Docker,
 `host.docker.internal` does not reach a Chrome bound to 127.0.0.1.
 
+**Login lost mid-scan.** A login can stop working while a scan runs (the app
+rotates a refresh token, an engine hits logout). Set **Login check path** in
+**Edit site → Authentication** to a page or API that answers 401/403 when
+logged out (`/account`, or `api:/me` for the API base URL). During a scan
+sakuda requests it with the site's headers at the start and then every
+minute; the first 401/403 is recorded on the scan (`authLost` in the scan
+API, a notice on the scan page). The scan keeps running — press **Stop scan**
+(`POST /api/scans/:id/cancel`) to end it; it is marked `failed` with
+`cancelled by user`, and findings already saved are kept. Only header-based
+auth (Cookie / Authorization) can be checked; leave the path empty to skip.
+**Check login** next to the field sends the check once with the values in the
+form (before saving; empty header values use the stored ones) and shows the
+verdict: green for 2xx, red for 401/403, and a note for a 3xx redirect — a scan
+cannot notice a lost login on a path that redirects instead of answering
+401/403.
+
 **Discovery seeds.** _Discovery seed paths_ (one per line, hash routes such
 as `/#/search?q=apple` are fine) start one Ajax spider each; empty falls
 back to the ZAP frontend seed path.
@@ -560,7 +576,11 @@ back to OAuth, which sakuda does not offer. Check that `SAKUDA_AUTH` starts with
 
 ### Tools and secrets
 
-Read tools: `list_sites`, `get_site`, `list_scans`, `get_scan`, `list_findings`.
+Read tools: `list_sites`, `get_site`, `list_scans`, `get_scan` (with `authLost`
+when the login check failed mid-scan), `list_findings`, and `check_auth` — sends
+the site's login check once with its saved headers and answers `ok` /
+`rejected` / `redirect` / `unexpected` / `no-answer` (header values are never
+returned).
 
 Write tools go through the same validation and checks as the UI:
 
@@ -587,6 +607,9 @@ Write tools go through the same validation and checks as the UI:
   the scan diff uses), so `false-positive` / `accepted` findings stop counting as
   new in later scans; the scan page shows the verdict and reason. Set
   `confirmed` to take a dismissal back. Verdicts are set over MCP only.
+- `cancel_scan` — stop the running scan (e.g. after `get_scan` shows
+  `authLost`); it ends as `failed` with `cancelled by user` and keeps the
+  findings already saved. A scan that is not running is refused.
 
 Re-sending the same targets, OpenAPI or verdict changes nothing.
 

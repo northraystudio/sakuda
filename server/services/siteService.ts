@@ -102,7 +102,7 @@ export function createSite(deps: SiteServiceDeps, input: SiteInput): SitePublic 
  * in the clear, so this is the one place the merge can happen — the UI
  * never sees stored values and cannot merge on its own.
  */
-function mergeHeaderPatches(stored: Header[], patches: HeaderPatch[]): Header[] {
+export function mergeHeaderPatches(stored: Header[], patches: HeaderPatch[]): Header[] {
   const storedByName = new Map(stored.map((h) => [h.name, h.value]))
   const unknown: string[] = []
   const merged: Header[] = []

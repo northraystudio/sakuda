@@ -19,6 +19,7 @@
   "nucleiEnabledRiskTags": ["fuzz", "intrusive", "dos"],
   "nucleiTags": [],
   "openapiAllowedOrigins": [],
+  "authCheckPath": null,
   "requestShapes": {
     "POST|front|/api/Complaints/": {
       "contentType": "application/json",

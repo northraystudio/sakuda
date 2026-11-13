@@ -151,4 +151,40 @@ describe('createJobLoop', () => {
 
     await loop.stop()
   })
+
+  it('cancelScan stops only the running scan, and the loop goes on to the next one (#74)', async () => {
+    const site = createSite(siteDeps, base)
+    const other = createSite(siteDeps, { ...base, name: 'other' })
+    const first = createScan(db, { now, id }, site.id, ['nuclei'])
+    const second = createScan(db, { now, id }, other.id, ['zap-fe'])
+    const hangingRunner: EngineRunner = vi.fn(
+      ({ signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('aborted')))
+        }),
+    )
+    const { loop, runners } = makeLoop({ nuclei: hangingRunner })
+
+    loop.start()
+    await vi.waitFor(() => expect(runners.nuclei).toHaveBeenCalled(), {
+      timeout: 2000,
+      interval: 5,
+    })
+    expect(loop.cancelScan(second.id)).toBe(false) // queued, not running
+    expect(loop.cancelScan(first.id)).toBe(true)
+
+    await vi.waitFor(
+      () => {
+        const row = db.select().from(scans).where(eq(scans.id, second.id)).get()
+        expect(row?.status).toBe('done')
+      },
+      { timeout: 2000, interval: 5 },
+    )
+    const firstRow = db.select().from(scans).where(eq(scans.id, first.id)).get()
+    expect(firstRow?.status).toBe('failed')
+    expect(firstRow?.error).toBe('cancelled by user')
+    expect(loop.cancelScan(first.id)).toBe(false) // finished
+
+    await loop.stop()
+  })
 })

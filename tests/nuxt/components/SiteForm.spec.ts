@@ -33,6 +33,7 @@ const editSite: SitePublic = {
   nucleiEnabledRiskTags: [],
   nucleiTags: [],
   openapiAllowedOrigins: [],
+  authCheckPath: null,
   headerNames: ['Authorization', 'X-Api-Key'],
   browserStorageNames: [],
   requestShapes: {},
@@ -354,6 +355,108 @@ describe('SiteForm', () => {
 
     const payload = emittedSubmit(wrapper)
     expect(payload.headers).toEqual([])
+  })
+
+  it('submits the login check path, or null when left empty (#74)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null },
+    })
+    await wrapper.find('[data-testid="name"]').setValue('Example')
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+    expect(emittedSubmit(wrapper).authCheckPath).toBeNull()
+
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/account')
+    await wrapper.find('[data-testid="site-form"]').trigger('submit')
+    const events = wrapper.emitted('submit')
+    const last = events?.[events.length - 1]?.[0]
+    expect(SiteInputSchema.parse(last).authCheckPath).toBe('/account')
+  })
+
+  it('Check login sends the form values and shows the verdict in color (#74)', async () => {
+    const checkAuth = vi.fn(async () => ({ outcome: 'ok' as const, status: 200, path: '/me' }))
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null, checkAuth },
+    })
+    const button = wrapper.find('[data-testid="auth-check-run"]')
+    expect(button.attributes('disabled')).toBeDefined() // no path yet
+
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/me')
+    await wrapper.find('[data-testid="auth-check-run"]').trigger('click')
+    await vi.waitFor(() =>
+      expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(true),
+    )
+    expect(checkAuth).toHaveBeenCalledWith({
+      frontBaseUrl: 'http://localhost:3000',
+      apiBaseUrl: null,
+      authCheckPath: '/me',
+      nonLocalConfirmed: false,
+      headers: [],
+    })
+    const result = wrapper.find('[data-testid="auth-check-result"]')
+    expect(result.attributes('data-outcome')).toBe('ok')
+    expect(result.classes()).toContain('border-success')
+
+    // Editing the path makes the shown result stale.
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/account')
+    expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(false)
+  })
+
+  it('Check login result goes stale when a header changes (#74)', async () => {
+    const checkAuth = vi.fn(async () => ({ outcome: 'ok' as const, status: 200, path: '/me' }))
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null, checkAuth },
+    })
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/me')
+    await wrapper.find('[data-testid="add-header"]').trigger('click')
+    await wrapper.find('[data-testid="header-name-0"]').setValue('Authorization')
+    await wrapper.find('[data-testid="header-value-0"]').setValue('Bearer a')
+    await wrapper.find('[data-testid="auth-check-run"]').trigger('click')
+    await vi.waitFor(() =>
+      expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(true),
+    )
+
+    // The verdict was for the old token; a new one has not been checked.
+    await wrapper.find('[data-testid="header-value-0"]').setValue('Bearer b')
+    expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(false)
+  })
+
+  it('explains a redirect, which a scan cannot detect (#74)', async () => {
+    const checkAuth = vi.fn(async () => ({
+      outcome: 'redirect' as const,
+      status: 302,
+      path: '/me',
+    }))
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null, checkAuth },
+    })
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/me')
+    await wrapper.find('[data-testid="auth-check-run"]').trigger('click')
+    await vi.waitFor(() =>
+      expect(wrapper.find('[data-testid="auth-check-result"]').text()).toContain('401/403'),
+    )
+  })
+
+  it('has no Check login button when the page gives no checkAuth (#74)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null },
+    })
+    expect(wrapper.find('[data-testid="auth-check-run"]').exists()).toBe(false)
+  })
+
+  it('shows the stored login check path in edit mode (#74)', async () => {
+    const wrapper = await mountSuspended(SiteForm, {
+      props: {
+        submitting: false,
+        errorMessage: null,
+        initial: { ...editSite, authCheckPath: 'api:/me' },
+      },
+    })
+    const input = wrapper.find<HTMLInputElement>('[data-testid="auth-check-path"]')
+    expect(input.element.value).toBe('api:/me')
   })
 
   describe('edit mode header rows', () => {

@@ -44,6 +44,7 @@ const SITE_FIELD_KEYS = [
   'nucleiEnabledRiskTags',
   'nucleiTags',
   'openapiAllowedOrigins',
+  'authCheckPath',
 ] as const satisfies readonly (keyof SiteTemplate)[]
 
 type SiteFields = Pick<SiteTemplate, (typeof SITE_FIELD_KEYS)[number]>

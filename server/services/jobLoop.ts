@@ -1,12 +1,15 @@
 import { claimNextQueuedDiscovery } from './discoveryService'
 import { runDiscovery, type DiscoveryRunnerDeps } from './discoveryRunner'
 import { claimNextQueuedScan } from './scanService'
-import { runScan, type ScanRunnerDeps } from './scanRunner'
+import { runScan, USER_CANCEL_REASON, type ScanRunnerDeps } from './scanRunner'
 
 export interface JobLoop {
   start(): void
   stop(): Promise<void>
   isBusy(): boolean
+  /** Stops the scan if it is the one running now (#74). True when the stop
+   * was signalled; false when that scan is not running in this loop. */
+  cancelScan(scanId: string): boolean
 }
 
 export type JobLoopDeps = ScanRunnerDeps & DiscoveryRunnerDeps & { pollMs: number }
@@ -14,19 +17,39 @@ export type JobLoopDeps = ScanRunnerDeps & DiscoveryRunnerDeps & { pollMs: numbe
 /** Single sequential worker over two queues. Scans are claimed before
  * discoveries so a queued scan is never starved by repeated discoveries;
  * within a queue, oldest first. */
+let registered: JobLoop | null = null
+
+/** Makes the running loop reachable from API routes (set once at boot). */
+export function registerJobLoop(loop: JobLoop | null): void {
+  registered = loop
+}
+
+/** The loop started at boot, or null when the job runner is off. */
+export function getJobLoop(): JobLoop | null {
+  return registered
+}
+
 export function createJobLoop(deps: JobLoopDeps): JobLoop {
   const ac = new AbortController()
   let timer: NodeJS.Timeout | null = null
   let current: Promise<void> | null = null
   let stopped = false
+  let runningScan: { id: string; ac: AbortController } | null = null
 
   function claimNext(): (() => Promise<void>) | null {
     const scanId = claimNextQueuedScan(deps.db, deps.now)
     if (scanId)
-      return () =>
-        runScan(deps, scanId, ac.signal).catch((e: unknown) =>
-          deps.logger.error({ scanId, err: e }, 'runScan crashed'),
-        )
+      return () => {
+        // Per-scan controller so a user stop ends this scan only; the
+        // loop-wide one still stops it on shutdown.
+        const scanAc = new AbortController()
+        runningScan = { id: scanId, ac: scanAc }
+        return runScan(deps, scanId, AbortSignal.any([ac.signal, scanAc.signal]))
+          .catch((e: unknown) => deps.logger.error({ scanId, err: e }, 'runScan crashed'))
+          .finally(() => {
+            runningScan = null
+          })
+      }
     const discoveryId = claimNextQueuedDiscovery(deps.db, deps.now)
     if (discoveryId)
       return () =>
@@ -59,5 +82,10 @@ export function createJobLoop(deps: JobLoopDeps): JobLoop {
       await current
     },
     isBusy: () => current !== null,
+    cancelScan(scanId) {
+      if (runningScan?.id !== scanId) return false
+      runningScan.ac.abort(USER_CANCEL_REASON)
+      return true
+    },
   }
 }
