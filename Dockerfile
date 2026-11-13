@@ -125,5 +125,11 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 HOME=/home/zap \
     SAKUDA_HTTPX_BIN=/usr/local/bin/httpx \
     SAKUDA_ZAP_CMD=/zap/zap.sh SAKUDA_LOCALHOST_ALIAS=host.docker.internal
 EXPOSE 3000
+# Replace the HEALTHCHECK inherited from the ZAP base (it curls $ZAP_PORT, but
+# sakuda starts ZAP only for a scan, so it always reported unhealthy — #66).
+# /api/jobs runs through the server and the DB; 127.0.0.1 passes the loopback
+# guard, and the body is discarded.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS -o /dev/null "http://127.0.0.1:${PORT}/api/jobs" || exit 1
 VOLUME ["/data"]
 ENTRYPOINT ["sakuda-entrypoint"]
