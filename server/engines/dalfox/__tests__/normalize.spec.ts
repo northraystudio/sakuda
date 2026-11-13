@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   dalfoxReachability,
+  dalfoxTargetOutcomes,
   dalfoxSeverity,
   normalizeDalfoxFindings,
   parseDalfoxReport,
@@ -28,6 +29,30 @@ describe('parseDalfoxReport', () => {
       JSON.stringify({ results: [{ type: 'V', data: 'http://x/', param: 'q' }] }),
     )
     expect(r.findings).toHaveLength(1)
+  })
+
+  it('parses a dalfox 3.3 finding that carries the newer `filter` fingerprint', () => {
+    // dalfox 3.3.0 added a per-parameter `filter` object to every finding and
+    // a `method` to `target_summary`; sakuda ignores both but must still parse.
+    const r = parseDalfoxReport(
+      JSON.stringify({
+        meta: {
+          dalfox_version: '3.3.0',
+          target_summary: [{ url: 'http://x/?q=', method: 'GET', status: 'findings' }],
+        },
+        findings: [
+          {
+            type: 'V',
+            data: 'http://x/?q=%3Csvg%3E',
+            param: 'q',
+            filter: { allowed: ['<', '>'], blocked: ['"'], escaped: ["'"] },
+          },
+        ],
+      }),
+    )
+    expect(r.findings).toHaveLength(1)
+    expect(r.findings[0]).toMatchObject({ type: 'V', param: 'q' })
+    expect(r.invalid).toBe(0)
   })
 
   it('returns an empty report (not a throw) for malformed JSON', () => {
@@ -161,5 +186,48 @@ describe('dalfoxReachability', () => {
 
   it('is empty/false when there is no target_summary', () => {
     expect(dalfoxReachability({})).toEqual({ total: 0, unreachable: 0, allUnreachable: false })
+  })
+})
+
+describe('dalfoxTargetOutcomes', () => {
+  it('counts per-target codes and accepts a report whose only errors are known per-target outcomes', () => {
+    const r = dalfoxTargetOutcomes({
+      target_summary: [
+        { status: 'clean' },
+        { status: 'skipped', error_code: 'CONTENT_TYPE_MISMATCH' },
+        { status: 'incomplete', error_code: 'SCAN_TIMEOUT' },
+        { status: 'incomplete', error_code: 'SCAN_TIMEOUT' },
+        { status: 'incomplete', error_code: 'SESSION_LOST' },
+      ],
+    })
+    expect(r.cutShort).toEqual({ SCAN_TIMEOUT: 2, SESSION_LOST: 1 })
+    expect(r.onlyPerTargetErrors).toBe(true)
+  })
+
+  it('rejects a report with an unknown or connection error code', () => {
+    expect(
+      dalfoxTargetOutcomes({
+        target_summary: [
+          { status: 'incomplete', error_code: 'SESSION_LOST' },
+          { error_code: 'WEIRD' },
+        ],
+      }).onlyPerTargetErrors,
+    ).toBe(false)
+    expect(
+      dalfoxTargetOutcomes({
+        target_summary: [
+          { status: 'clean' },
+          { status: 'skipped', error_code: 'CONNECTION_FAILED' },
+        ],
+      }).onlyPerTargetErrors,
+    ).toBe(false)
+  })
+
+  it('is false when no target carries an error code, or there is no target_summary', () => {
+    expect(dalfoxTargetOutcomes({ target_summary: [{ status: 'clean' }] })).toEqual({
+      cutShort: {},
+      onlyPerTargetErrors: false,
+    })
+    expect(dalfoxTargetOutcomes({})).toEqual({ cutShort: {}, onlyPerTargetErrors: false })
   })
 })

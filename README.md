@@ -230,7 +230,7 @@ nuclei, katana, dalfox and httpx run as native binaries and ZAP runs via Docker 
   the version pinned in the Dockerfile) and point `SAKUDA_KATANA_BIN` at it. Without
   it, discovery still works on ZAP alone and reports the missing binary as a warning.
 - Install dalfox locally (`brew install dalfox`, or download the pinned
-  v3.2.2 release) and point `SAKUDA_DALFOX_BIN` at it. Without it, a scan that
+  v3.3.0 release) and point `SAKUDA_DALFOX_BIN` at it. Without it, a scan that
   selects the XSS engine fails that engine run with a clear "binary not found"
   error; the other engines are unaffected.
 - Install httpx locally (`go install github.com/projectdiscovery/httpx/cmd/httpx@v1.12.0`,

@@ -4,7 +4,7 @@ import type { SeverityCounts, SeverityLevel } from '#shared/types/api'
 import type { NewFinding } from '../types'
 
 /**
- * The subset of a dalfox JSON finding sakuda reads (dalfox v3.2.2 `-f json`,
+ * The subset of a dalfox JSON finding sakuda reads (dalfox v3.2.2–v3.3.0 `-f json`,
  * one object per element of the top-level `findings` array). `data` carries
  * the full URL the payload landed in — dalfox has no separate `url` key — and
  * `param` is the parameter name (`-` for an AST/DOM flow with no request
@@ -80,6 +80,44 @@ export function dalfoxReachability(meta: Record<string, unknown>): DalfoxReachab
     total: list.length,
     unreachable,
     allUnreachable: list.length > 0 && unreachable === list.length,
+  }
+}
+
+/**
+ * Per-target error codes that describe one target's outcome rather than a
+ * failed run. dalfox exits 2 when any target carries one of them (both v3.2.2
+ * and v3.3.0 do this for SESSION_LOST), even though the rest of the scan ran.
+ * - CONTENT_TYPE_MISMATCH: skipped by design (a non-HTML response, e.g. a file)
+ * - SCAN_TIMEOUT: cut short by the per-target `scan_timeout`
+ * - SESSION_LOST: the target's preflight already looked unauthenticated
+ */
+const PER_TARGET_ERROR_CODES = new Set(['CONTENT_TYPE_MISMATCH', 'SCAN_TIMEOUT', 'SESSION_LOST'])
+
+export interface DalfoxTargetOutcomes {
+  /** error_code → target count, for targets dalfox did not finish testing
+   * (every per-target code except the by-design CONTENT_TYPE_MISMATCH skip). */
+  cutShort: Record<string, number>
+  /** True when the report lists targets, at least one carries an error code,
+   * and every error code is a known per-target outcome. An exit 2 with such a
+   * report describes those targets, not a failed run. An unknown code keeps
+   * this false, so a format drift or a new failure mode still fails loudly. */
+  onlyPerTargetErrors: boolean
+}
+
+/** Reads per-target outcomes from the scan-metadata envelope's `target_summary`. */
+export function dalfoxTargetOutcomes(meta: Record<string, unknown>): DalfoxTargetOutcomes {
+  const raw = meta.target_summary
+  const list: DalfoxTargetSummary[] = Array.isArray(raw) ? (raw as DalfoxTargetSummary[]) : []
+  const codes = list
+    .map((t) => (t != null && typeof t.error_code === 'string' ? t.error_code.trim() : ''))
+    .filter((c) => c !== '')
+  const cutShort: Record<string, number> = {}
+  for (const c of codes) {
+    if (c !== 'CONTENT_TYPE_MISMATCH') cutShort[c] = (cutShort[c] ?? 0) + 1
+  }
+  return {
+    cutShort,
+    onlyPerTargetErrors: codes.length > 0 && codes.every((c) => PER_TARGET_ERROR_CODES.has(c)),
   }
 }
 

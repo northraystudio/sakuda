@@ -11,7 +11,12 @@ import { writeSecretFile } from '../secretFile'
 import { EngineError, type EngineOutput, type EngineRunner } from '../types'
 import { buildDalfoxArgs } from './args'
 import { buildDalfoxConfig } from './config'
-import { dalfoxReachability, normalizeDalfoxFindings, parseDalfoxReport } from './normalize'
+import {
+  dalfoxReachability,
+  dalfoxTargetOutcomes,
+  normalizeDalfoxFindings,
+  parseDalfoxReport,
+} from './normalize'
 
 /** First occurrence per key, order preserved. */
 function uniqueBy<T>(items: T[], keyOf: (item: T) => string): T[] {
@@ -168,6 +173,7 @@ export const runDalfox: EngineRunner = async ({ scanId, site, workDir, env, logg
     const json = existsSync(outputFile) ? await readFile(outputFile, 'utf8') : ''
     const report = parseDalfoxReport(json)
     const reach = dalfoxReachability(report.meta)
+    const outcomes = dalfoxTargetOutcomes(report.meta)
 
     // dalfox exit 1 means it found at least one finding of any tier. If we then
     // parsed nothing at all (empty `findings` array, no unparsable entries), the
@@ -186,9 +192,19 @@ export const runDalfox: EngineRunner = async ({ scanId, site, workDir, env, logg
     // target_summary marks each target skipped/CONNECTION_FAILED — the target was
     // down, not a scan error. Treat that as "unavailable" (a warning + zero
     // findings), distinct from a genuine failure, so a stopped target container
-    // does not fail the engine. A real exit-2 error (no report, or partial
-    // reachability) still throws.
-    if (result.code === 2 && findings.length === 0 && !result.timedOut && !reach.allUnreachable)
+    // does not fail the engine. dalfox also exits 2 when a single target ends
+    // SESSION_LOST / SCAN_TIMEOUT while the rest of the scan ran; a report whose
+    // only errors are such per-target codes is a partial result (warned below),
+    // not a failure. A real exit-2 error (no report, partial reachability, or
+    // an unknown error code) still throws.
+    const perTargetExit2 = result.code === 2 && outcomes.onlyPerTargetErrors
+    if (
+      result.code === 2 &&
+      findings.length === 0 &&
+      !result.timedOut &&
+      !reach.allUnreachable &&
+      !perTargetExit2
+    )
       throw new EngineError(`dalfox failed (exit 2) and produced no findings; see ${stderrPath}`)
 
     // Whatever the exit code, if every target was unreachable, say so — a clean
@@ -203,8 +219,20 @@ export const runDalfox: EngineRunner = async ({ scanId, site, workDir, env, logg
       warnings.push(`dalfox was stopped after ${env.dalfox.maxMinutes} min; results are partial`)
     }
     if (report.invalid > 0) warnings.push(`${report.invalid} unparsable dalfox finding(s) ignored`)
-    // The scan-metadata envelope’s own partial-run signal.
-    if (report.meta.incomplete === true && !result.timedOut)
+    // Name the targets dalfox cut short, by error code, so a partial run is
+    // not read as "nothing to find". Skipped when all were unreachable (warned above).
+    const cutShort = Object.entries(outcomes.cutShort)
+    if (cutShort.length > 0 && !reach.allUnreachable) {
+      const total = cutShort.reduce((n, [, c]) => n + c, 0)
+      const breakdown = cutShort.map(([code, c]) => `${code} ×${c}`).join(', ')
+      warnings.push(`${total} dalfox target(s) were not fully tested (${breakdown})`)
+    }
+    if (outcomes.cutShort.SESSION_LOST && !reach.allUnreachable)
+      warnings.push(
+        `${outcomes.cutShort.SESSION_LOST} dalfox target(s) already looked unauthenticated before testing (SESSION_LOST) — check the site’s auth headers are current, unless that endpoint rejects the request by design`,
+      )
+    // The scan-metadata envelope’s own partial-run signal, when no target says why.
+    if (report.meta.incomplete === true && !result.timedOut && cutShort.length === 0)
       warnings.push('dalfox reported an incomplete scan (a target was not fully tested)')
 
     logger.info(
@@ -216,9 +244,9 @@ export const runDalfox: EngineRunner = async ({ scanId, site, workDir, env, logg
       findings,
       counts,
       warnings,
-      // exit 1 (findings) and all-unreachable (target down) are both clean runs,
-      // not failures — normalize them to 0.
-      exitCode: result.code === 1 || reach.allUnreachable ? 0 : result.code,
+      // exit 1 (findings), all-unreachable (target down) and a per-target-only
+      // exit 2 (partial, warned) are not failures — normalize them to 0.
+      exitCode: result.code === 1 || reach.allUnreachable || perTargetExit2 ? 0 : result.code,
       signal: result.signal,
       meta: {
         urlCount: getUrls.length,
@@ -230,6 +258,7 @@ export const runDalfox: EngineRunner = async ({ scanId, site, workDir, env, logg
         incomplete: report.meta.incomplete === true,
         unavailable: reach.allUnreachable,
         unreachableTargets: reach.unreachable,
+        cutShortTargets: outcomes.cutShort,
         timedOut: result.timedOut,
         durationSec: Math.round(result.durationMs / 1000),
       },

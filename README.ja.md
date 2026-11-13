@@ -226,7 +226,7 @@ task env                    # 新しい鍵入りの .env（または: cp .env.ex
   `go install github.com/projectdiscovery/katana/cmd/katana@v1.7.0`）、
   `SAKUDA_KATANA_BIN` で指す。無くてもディスカバリは ZAP 単独で動き、バイナリが
   無いことを警告として報告する。
-- dalfox をローカルにインストールし（`brew install dalfox`、またはピン留めの v3.2.2
+- dalfox をローカルにインストールし（`brew install dalfox`、またはピン留めの v3.3.0
   リリースをダウンロード）、`SAKUDA_DALFOX_BIN` で指す。無い場合、XSS エンジンを
   選んだスキャンはそのエンジン実行だけが明確な「binary not found」エラーで失敗し、
   他のエンジンには影響しない。

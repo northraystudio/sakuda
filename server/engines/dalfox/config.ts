@@ -13,7 +13,7 @@ export interface DalfoxConfigInput {
 }
 
 /**
- * The dalfox JSON config document. dalfox v3.2.2 accepts a TOML or JSON config
+ * The dalfox JSON config document. dalfox v3.3.0 (as v3.2.2) accepts a TOML or JSON config
  * whose keys live under a `scan` table and mirror the CLI flags; secrets
  * (Authorization / Cookie headers) go here rather than on argv so they never
  * appear in the process list. The whole bounded profile is expressed here as
