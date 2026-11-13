@@ -78,11 +78,16 @@ export async function fetchOpenapiDoc(i: OpenapiFetchInput): Promise<string> {
         )
       // Resolved against the URL actually requested, then mapped back from the
       // loopback alias so the origin check compares saved origins.
-      current = restoreLoopbackHost(
-        new URL(location, requestUrl).toString(),
-        i.localhostAlias,
-        new URL(current).hostname,
-      )
+      if (!URL.canParse(location, requestUrl))
+        throw new EngineError(
+          `zap-api: ${origin} answered HTTP ${res.status} to the OpenAPI URL with an invalid Location header`,
+        )
+      const next = new URL(location, requestUrl)
+      if (next.protocol !== 'http:' && next.protocol !== 'https:')
+        throw new EngineError(
+          `zap-api: ${origin} redirected the OpenAPI URL to an unsupported scheme (${next.protocol})`,
+        )
+      current = restoreLoopbackHost(next.toString(), i.localhostAlias, new URL(current).hostname)
       continue
     }
     if (!res.ok) {
@@ -92,7 +97,17 @@ export async function fetchOpenapiDoc(i: OpenapiFetchInput): Promise<string> {
           'if it needs a login, the site’s headers',
       )
     }
-    return readWithin(res, origin)
+    try {
+      return await readWithin(res, origin)
+    } catch (e) {
+      if (e instanceof EngineError) throw e
+      throw new EngineError(
+        `zap-api: reading the OpenAPI document from ${origin} failed (${errorName(e)}) — check ` +
+          'the OpenAPI URL is reachable from sakuda',
+        undefined,
+        { cause: e },
+      )
+    }
   }
   throw new EngineError(
     `zap-api: the OpenAPI URL redirected more than ${OPENAPI_FETCH_MAX_REDIRECTS} times — paste the document as JSON instead`,

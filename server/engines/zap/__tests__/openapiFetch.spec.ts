@@ -155,6 +155,39 @@ describe('fetchOpenapiDoc', () => {
     ).rejects.toThrow(/without a Location header/)
   })
 
+  it('refuses an unparseable Location and a non-http(s) scheme as EngineErrors', async () => {
+    const f = fakeFetch({
+      'https://api.example.com/bad': redirect('http://[bad'),
+      'https://api.example.com/ftp': redirect('ftp://api.example.com/openapi.json'),
+    })
+    await expect(
+      fetchOpenapiDoc({ ...base, url: 'https://api.example.com/bad', fetchImpl: f.impl }),
+    ).rejects.toThrow(/invalid Location header/)
+    await expect(
+      fetchOpenapiDoc({ ...base, url: 'https://api.example.com/ftp', fetchImpl: f.impl }),
+    ).rejects.toThrow(/unsupported scheme \(ftp:\)/)
+  })
+
+  it('wraps a failure while reading the body as an EngineError', async () => {
+    const broken = new ReadableStream<Uint8Array>({
+      pull(c) {
+        c.error(new TypeError('socket reset'))
+      },
+    })
+    const f = fakeFetch({
+      'https://api.example.com/x': () => new Response(broken, { status: 200 }),
+    })
+    const err = await fetchOpenapiDoc({
+      ...base,
+      url: 'https://api.example.com/x',
+      fetchImpl: f.impl,
+    }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(EngineError)
+    expect(String(err)).toMatch(
+      /reading the OpenAPI document from https:\/\/api\.example\.com failed/,
+    )
+  })
+
   it('refuses a document over the size cap instead of truncating it', async () => {
     const big = 'x'.repeat(OPENAPI_FETCH_MAX_BYTES + 1)
     const f = fakeFetch({ 'https://api.example.com/big': doc(big) })
