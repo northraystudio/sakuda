@@ -35,9 +35,9 @@ export interface DomXssProbeConfig {
   /** Absolute hash-route URLs (loopback already aliased), e.g.
    * `http://host.docker.internal:3000/#/search?q=`. */
   routes: string[]
-  /** Front origin (aliased) the browser opens first — `getProxiedBrowser`
-   * navigates there on creation, which also gets us off ZAP's
-   * `https://zap/zapCallBackUrl/...` launch page onto the real origin. */
+  /** Front origin (aliased) the browser opens first, right after launch —
+   * which also gets us off ZAP's `https://zap/zapCallBackUrl/...` launch page
+   * onto the real origin. */
   origin: string
   /** Container-side path the script writes its `{probed,hits,truncated}`
    * summary to (see `zapPath`). */
@@ -73,6 +73,9 @@ export function buildDomXssProbeScript(cfg: DomXssProbeConfig): string {
 var Control = Java.type('org.parosproxy.paros.control.Control');
 var Model = Java.type('org.parosproxy.paros.model.Model');
 var ExtensionSelenium = Java.type('org.zaproxy.zap.extension.selenium.ExtensionSelenium');
+var DriverConfiguration = Java.type('org.zaproxy.zap.extension.selenium.DriverConfiguration');
+var ExtensionNetwork = Java.type('org.zaproxy.addon.network.ExtensionNetwork');
+var HttpSender = Java.type('org.parosproxy.paros.network.HttpSender');
 var ExtensionAlert = Java.type('org.zaproxy.zap.extension.alert.ExtensionAlert');
 var Alert = Java.type('org.parosproxy.paros.core.scanner.Alert');
 var HistoryReference = Java.type('org.parosproxy.paros.model.HistoryReference');
@@ -139,12 +142,27 @@ var probed = 0;
 var hits = 0;
 var truncated = false;
 try {
-  // getProxiedBrowser(providedBrowserId, url) — the id is the same value the
-  // Ajax spider job uses (e.g. "firefox-headless") and it navigates to that url
-  // on creation, which also moves us off ZAP's zapCallBackUrl launch page.
-  // (getProxiedBrowserByName takes a display name and returns null for an id.)
+  // Launch the browser the way getProxiedBrowser(id, url) does (proxied via
+  // ZAP, extensions on, the same browser id as the Ajax spider), but with
+  // Selenium scripts run synchronously (selenium add-on >= 15.57). The
+  // browser-storage hook then finishes seeding before getWebDriver returns;
+  // getProxiedBrowser runs it on its own thread, where it raced our
+  // about:blank -> target navigations and the probe ran logged out (#71).
+  // With no Selenium script enabled this launches exactly as before.
+  // Then open the origin, which also moves us off ZAP's zapCallBackUrl page.
   // Inside the try so a bootstrap failure still writes the summary in finally.
-  wd = extSel.getProxiedBrowser(BROWSER_ID, ORIGIN);
+  var proxy = Control.getSingleton().getExtensionLoader().getExtension(ExtensionNetwork.class).getMainProxyServerInfo();
+  wd = extSel.getWebDriver(
+    BROWSER_ID,
+    DriverConfiguration.builder()
+      .requester(HttpSender.PROXY_INITIATOR)
+      .proxyAddress(proxy.getAddress())
+      .proxyPort(proxy.getPort())
+      .enableExtensions(true)
+      .syncScriptExecution(true)
+      .build(),
+  );
+  wd.get(ORIGIN);
   for (var r = 0; r < ROUTES.length; r++) {
     if (Date.now() > DEADLINE) { truncated = true; break; }
     var route = ROUTES[r];
