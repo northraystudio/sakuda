@@ -403,6 +403,26 @@ describe('SiteForm', () => {
     expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(false)
   })
 
+  it('Check login result goes stale when a header changes (#74)', async () => {
+    const checkAuth = vi.fn(async () => ({ outcome: 'ok' as const, status: 200, path: '/me' }))
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null, checkAuth },
+    })
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/me')
+    await wrapper.find('[data-testid="add-header"]').trigger('click')
+    await wrapper.find('[data-testid="header-name-0"]').setValue('Authorization')
+    await wrapper.find('[data-testid="header-value-0"]').setValue('Bearer a')
+    await wrapper.find('[data-testid="auth-check-run"]').trigger('click')
+    await vi.waitFor(() =>
+      expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(true),
+    )
+
+    // The verdict was for the old token; a new one has not been checked.
+    await wrapper.find('[data-testid="header-value-0"]').setValue('Bearer b')
+    expect(wrapper.find('[data-testid="auth-check-result"]').exists()).toBe(false)
+  })
+
   it('explains a redirect, which a scan cannot detect (#74)', async () => {
     const checkAuth = vi.fn(async () => ({
       outcome: 'redirect' as const,

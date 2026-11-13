@@ -326,11 +326,13 @@ const canCheckAuth = computed(
 )
 // A result describes the values it was run with; editing them makes it stale.
 watch(
-  () => [form.authCheckPath, form.frontBaseUrl, form.apiBaseUrl],
+  () => [form.authCheckPath, form.frontBaseUrl, form.apiBaseUrl, headerRows],
   () => {
     authCheckResult.value = null
     authCheckError.value = null
   },
+  // deep: a header row's name or value edited in place, or a row added/removed.
+  { deep: true },
 )
 
 async function runAuthCheck() {
