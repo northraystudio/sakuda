@@ -13,8 +13,13 @@ import { expandNucleiTargets } from '../../domain/nucleiTargets'
 import { EngineError, OOM_RUNBOOK, type EngineRunner } from '../types'
 import { buildZapApiPlan, planToYaml, ZAP_REPORT_JSON } from './plan'
 import { buildReplacerConf } from './replacer'
+import { fetchOpenapiDoc } from './openapiFetch'
 import { normalizeZapReport, parseZapReport } from './report'
 import { runZap, zapPath } from './runZap'
+
+/** The document fetched from the site's OpenAPI URL. ZAP reads JSON or YAML
+ * whatever the extension, so one name fits both. */
+const OPENAPI_URL_FILE = 'openapi-url.json'
 
 export const runZapApi: EngineRunner = async ({ scanId, site, workDir, env, logger, signal }) => {
   const alias = env.zap.localhostAlias
@@ -25,7 +30,7 @@ export const runZapApi: EngineRunner = async ({ scanId, site, workDir, env, logg
   // One `openapi` import job per source: the user's pasted/URL doc (if any) and
   // sakuda's generated non-GET doc (#73). The generated doc is written 0600 and
   // deleted after the run (secretFiles), same discipline as nuclei's.
-  const openapiSources: Array<{ apiFile: string } | { apiUrl: string }> = []
+  const openapiSources: Array<{ apiFile: string }> = []
   const secretFiles: Record<string, string> = {}
   const sourceLabels: string[] = []
 
@@ -35,7 +40,20 @@ export const runZapApi: EngineRunner = async ({ scanId, site, workDir, env, logg
     openapiSources.push({ apiFile: zapPath(env, workDir, 'openapi.json') })
     sourceLabels.push('pasted')
   } else if (site.openapiUrl) {
-    openapiSources.push({ apiUrl: rewriteLoopbackHost(site.openapiUrl, alias) })
+    // sakuda fetches the document itself instead of handing ZAP the URL: ZAP
+    // follows a redirect to any host, and fetchOpenapiDoc checks every hop
+    // against the site's origins (#57). The fetched document may be private,
+    // so it goes through secretFiles like the generated docs.
+    secretFiles[OPENAPI_URL_FILE] = await fetchOpenapiDoc({
+      url: site.openapiUrl,
+      allowedOrigins: [site.frontBaseUrl, site.apiBaseUrl, ...site.openapiAllowedOrigins].filter(
+        (u): u is string => u !== null,
+      ),
+      headers: site.headers,
+      localhostAlias: env.localhostAlias,
+      signal,
+    })
+    openapiSources.push({ apiFile: zapPath(env, workDir, OPENAPI_URL_FILE) })
     sourceLabels.push('url')
   }
 
