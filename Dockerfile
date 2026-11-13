@@ -6,6 +6,9 @@
 #
 # Versions verified before pinning (see task-15-report.md for how):
 #   - ZAP_VERSION: ghcr.io/zaproxy/zaproxy:2.17.0 (manifest confirmed)
+#   - ZAP_IMAGE_DIGEST: the 2.17.0 multi-arch index as rebuilt upstream on 2026-11-03 (Debian 12.15
+#     with perl 5.36.0-7+deb12u4, firefox-esr 153.6.0esr, certifi 2026.10.23, urllib3 2.8.0 — #63, #65).
+#     The tag is rebuilt in place, so the digest pins which build every machine uses; bump both together.
 #   - NODE_VERSION: 22.23.4 (latest Node 22 "Jod" LTS, security release, nodejs.org/dist/index.json)
 #   - NUCLEI_VERSION: 3.11.1 (github.com/projectdiscovery/nuclei latest release)
 #   - NUCLEI_TEMPLATES_TAG: v10.5.1 (github.com/projectdiscovery/nuclei-templates latest release)
@@ -17,6 +20,7 @@
 #   - ASCANRULES_BETA_VERSION: 67 (zap-extensions ascanrulesBeta-v67, requires ZAP>=2.17.0 and
 #     commonlib>=1.43.0 — the ZAP 2.17.0 image bundles commonlib 1.43.0)
 ARG ZAP_VERSION=2.17.0
+ARG ZAP_IMAGE_DIGEST=sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
 ARG NODE_VERSION=22.23.4
 ARG NUCLEI_VERSION=3.11.1
 ARG NUCLEI_TEMPLATES_TAG=v10.5.1
@@ -39,7 +43,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-FROM ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}
+FROM ghcr.io/zaproxy/zaproxy:${ZAP_VERSION}@${ZAP_IMAGE_DIGEST}
 ARG ZAP_VERSION NODE_VERSION NUCLEI_VERSION NUCLEI_TEMPLATES_TAG KATANA_VERSION DALFOX_VERSION HTTPX_VERSION ASCANRULES_BETA_VERSION TARGETARCH
 USER root
 
