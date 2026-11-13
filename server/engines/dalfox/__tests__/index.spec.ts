@@ -53,6 +53,45 @@ fs.writeFileSync(outFile, JSON.stringify({
 }))
 process.exit(2)
 `
+// Fake dalfox (v3.2.2 and v3.3.0 alike): one target ends SESSION_LOST and one
+// SCAN_TIMEOUT, the rest ran clean — exits 2 with a well-formed report.
+const FAKE_PER_TARGET_EXIT2 = `#!/usr/bin/env node
+const fs = require('node:fs')
+const args = process.argv.slice(2)
+const outFile = args[args.indexOf('-o') + 1]
+fs.writeFileSync(outFile, JSON.stringify({
+  findings: [],
+  meta: {
+    findings_count: 0,
+    incomplete: true,
+    target_summary: [
+      { target: 'http://h/', status: 'clean' },
+      { target: 'http://h/a.md', status: 'skipped', error_code: 'CONTENT_TYPE_MISMATCH' },
+      { target: 'http://h/rest/admin', status: 'incomplete', error_code: 'SCAN_TIMEOUT' },
+      { target: 'http://h/rest/user/change-password?current=', status: 'incomplete', error_code: 'SESSION_LOST' },
+    ],
+  },
+}))
+process.exit(2)
+`
+// Same shape, but one target carries an error code sakuda does not know.
+const FAKE_UNKNOWN_CODE_EXIT2 = `#!/usr/bin/env node
+const fs = require('node:fs')
+const args = process.argv.slice(2)
+const outFile = args[args.indexOf('-o') + 1]
+fs.writeFileSync(outFile, JSON.stringify({
+  findings: [],
+  meta: {
+    findings_count: 0,
+    target_summary: [
+      { target: 'http://h/', status: 'clean' },
+      { target: 'http://h/x', status: 'incomplete', error_code: 'SESSION_LOST' },
+      { target: 'http://h/y', status: 'failed', error_code: 'INTERNAL_ERROR' },
+    ],
+  },
+}))
+process.exit(2)
+`
 // Fake dalfox that hangs, to exercise the timeout path.
 const FAKE_HANG = `#!/usr/bin/env node
 setInterval(() => {}, 1000)
@@ -177,6 +216,26 @@ describe('runDalfox', () => {
     expect(out.exitCode).toBe(0) // not a failure
     expect(out.meta.unavailable).toBe(true)
     expect(out.warnings.join(' ')).toMatch(/unreachable/i)
+  })
+
+  it('treats exit 2 with only per-target codes as a partial run, naming what was cut short', async () => {
+    const bin = writeFakeBin(tmp, 'dalfox', FAKE_PER_TARGET_EXIT2)
+    const out = await run(baseEnv(bin), baseSite())
+    expect(out.findings).toHaveLength(0)
+    expect(out.exitCode).toBe(0) // partial, not a failure
+    expect(out.meta.unavailable).toBe(false)
+    expect(out.meta.cutShortTargets).toEqual({ SCAN_TIMEOUT: 1, SESSION_LOST: 1 })
+    const w = out.warnings.join(' | ')
+    expect(w).toMatch(
+      /2 dalfox target\(s\) were not fully tested \(SCAN_TIMEOUT ×1, SESSION_LOST ×1\)/,
+    )
+    expect(w).toMatch(/SESSION_LOST\) — check the site’s auth headers/)
+    expect(w).not.toMatch(/CONTENT_TYPE_MISMATCH/) // a by-design skip is not a warning
+  })
+
+  it('still fails on exit 2 when a target carries an unknown error code', async () => {
+    const bin = writeFakeBin(tmp, 'dalfox', FAKE_UNKNOWN_CODE_EXIT2)
+    await expect(run(baseEnv(bin), baseSite())).rejects.toBeInstanceOf(EngineError)
   })
 
   it('warns and returns partial when the run times out', async () => {

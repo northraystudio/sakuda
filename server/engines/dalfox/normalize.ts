@@ -83,6 +83,44 @@ export function dalfoxReachability(meta: Record<string, unknown>): DalfoxReachab
   }
 }
 
+/**
+ * Per-target error codes that describe one target's outcome rather than a
+ * failed run. dalfox exits 2 when any target carries one of them (both v3.2.2
+ * and v3.3.0 do this for SESSION_LOST), even though the rest of the scan ran.
+ * - CONTENT_TYPE_MISMATCH: skipped by design (a non-HTML response, e.g. a file)
+ * - SCAN_TIMEOUT: cut short by the per-target `scan_timeout`
+ * - SESSION_LOST: the target's preflight already looked unauthenticated
+ */
+const PER_TARGET_ERROR_CODES = new Set(['CONTENT_TYPE_MISMATCH', 'SCAN_TIMEOUT', 'SESSION_LOST'])
+
+export interface DalfoxTargetOutcomes {
+  /** error_code → target count, for targets dalfox did not finish testing
+   * (every per-target code except the by-design CONTENT_TYPE_MISMATCH skip). */
+  cutShort: Record<string, number>
+  /** True when the report lists targets, at least one carries an error code,
+   * and every error code is a known per-target outcome. An exit 2 with such a
+   * report describes those targets, not a failed run. An unknown code keeps
+   * this false, so a format drift or a new failure mode still fails loudly. */
+  onlyPerTargetErrors: boolean
+}
+
+/** Reads per-target outcomes from the scan-metadata envelope's `target_summary`. */
+export function dalfoxTargetOutcomes(meta: Record<string, unknown>): DalfoxTargetOutcomes {
+  const raw = meta.target_summary
+  const list: DalfoxTargetSummary[] = Array.isArray(raw) ? (raw as DalfoxTargetSummary[]) : []
+  const codes = list
+    .map((t) => (t != null && typeof t.error_code === 'string' ? t.error_code.trim() : ''))
+    .filter((c) => c !== '')
+  const cutShort: Record<string, number> = {}
+  for (const c of codes) {
+    if (c !== 'CONTENT_TYPE_MISMATCH') cutShort[c] = (cutShort[c] ?? 0) + 1
+  }
+  return {
+    cutShort,
+    onlyPerTargetErrors: codes.length > 0 && codes.every((c) => PER_TARGET_ERROR_CODES.has(c)),
+  }
+}
+
 /** Parses dalfox's JSON document into typed findings + the scan-metadata
  * envelope. A malformed document yields an empty report with `invalid`
  * reflecting the count when it is an array of broken entries. */
