@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { buildBrowserStorageScript, BROWSER_STORAGE_SCRIPT_ENGINE } from '../browserStorageScript'
 
@@ -24,5 +25,60 @@ describe('buildBrowserStorageScript', () => {
     expect(script).toContain("wd.get(ORIGINS[o] + '/')")
     expect(script).toContain("wd.executeScript('location.reload()')")
     expect(BROWSER_STORAGE_SCRIPT_ENGINE).toBe('ECMAScript : Graal.js')
+  })
+})
+
+/** A fake Selenium WebDriver: records calls; `failOnWrite` makes every
+ * storage write throw the way Selenium does — with the arguments in the
+ * message. */
+function fakeDriver(currentUrl: string, failOnWrite = false) {
+  const calls: string[] = []
+  let url = currentUrl
+  const wd = {
+    getCurrentUrl: () => url,
+    get: (u: string) => {
+      calls.push(`get ${u}`)
+      url = u
+    },
+    executeScript: (script: string, ...args: string[]) => {
+      if (failOnWrite && script.includes('setItem')) {
+        throw new Error(
+          `SecurityError: The operation is insecure. Command: executeScript args=[${args.join(', ')}]`,
+        )
+      }
+      calls.push(`exec ${script.slice(0, 30)}`)
+    },
+  }
+  return { wd, calls }
+}
+
+/** Runs the generated script's browserLaunched hook in a fresh context. The
+ * hook only touches `utils` and `print`, like it does inside ZAP's Graal.js. */
+function runHook(script: string, wd: unknown, plannedUrl: string): void {
+  const ctx: Record<string, unknown> = { print: () => {} }
+  runInNewContext(script, ctx)
+  const hook = ctx.browserLaunched as (utils: unknown) => void
+  hook({
+    getWebDriver: () => wd,
+    waitForURL: () => plannedUrl,
+    getBrowserId: () => 'firefox-headless',
+  })
+}
+
+describe('browserLaunched hook (run against a fake WebDriver)', () => {
+  const origin = 'http://host.docker.internal:4001'
+  const items = [{ kind: 'localStorage' as const, name: 'token', value: 'eyJ.secret-jwt' }]
+
+  it('re-throws a failed write without the stored value', () => {
+    const { wd } = fakeDriver(`${origin}/`, true)
+    let message = ''
+    try {
+      runHook(buildBrowserStorageScript(items, [origin]), wd, `${origin}/`)
+    } catch (e) {
+      // The hook runs in another vm context, so its Error fails `instanceof Error` here.
+      message = String((e as { message?: unknown }).message)
+    }
+    expect(message).toBe(`[sakuda-browser-storage] could not set localStorage "token" on ${origin}`)
+    expect(message).not.toContain('secret-jwt')
   })
 })
