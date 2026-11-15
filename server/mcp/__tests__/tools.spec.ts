@@ -164,7 +164,12 @@ describe('sakuda MCP tools', () => {
     expect(scansList.json.map((s: { id: string }) => s.id)).toEqual([scan.id])
 
     const scanDetail = await call(c, 'get_scan', { scanId: scan.id })
-    expect(scanDetail.json).toMatchObject({ id: scan.id, status: 'done', findingCount: 2 })
+    expect(scanDetail.json).toMatchObject({
+      id: scan.id,
+      status: 'done',
+      findingCount: 2,
+      blockedBeforeApp: null, // #82: set only when the scan-start entry check saw a block page
+    })
     expect(scanDetail.json).not.toHaveProperty('findings')
 
     for (const r of [sites, detail, scansList, scanDetail]) {

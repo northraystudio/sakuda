@@ -18,7 +18,7 @@ import {
 } from './authWatch'
 import { findBlockedEntries } from './entryCheck'
 import { loadSiteWithHeaders } from './siteService'
-import type { Engine } from '#shared/types/api'
+import type { Engine, ScanBlockedEntry } from '#shared/types/api'
 import { emptyCounts } from '#shared/utils/severity'
 
 export interface ScanRunnerDeps {
@@ -113,12 +113,22 @@ export async function runScan(
     // block page there means the results are likely empty. Recorded as a
     // warning; the scan still runs (Stop scan is the user's call).
     const recordBlockedEntries = async (): Promise<void> => {
-      const entries = await findBlockedEntries({
-        site,
-        send: deps.entryCheckSend ?? fetchAuthStatus(deps.env.localhostAlias),
-        logger: log,
-        signal,
-      })
+      let entries: ScanBlockedEntry[]
+      try {
+        entries = await findBlockedEntries({
+          site,
+          send: deps.entryCheckSend ?? fetchAuthStatus(deps.env.localhostAlias),
+          logger: log,
+          signal,
+        })
+      } catch (e) {
+        // A warning, never a reason to fail the scan.
+        log.warn(
+          { operation: 'entryCheck', err: e instanceof Error ? e.message : String(e) },
+          'entry check failed; the scan continues without it',
+        )
+        return
+      }
       if (entries.length === 0) return
       log.warn(
         { operation: 'entryCheck', entries: entries.map((e) => e.entry) },

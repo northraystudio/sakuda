@@ -353,6 +353,25 @@ describe('runScan', () => {
       )
     })
 
+    it('keeps scanning when the entry check itself throws (#82)', async () => {
+      const site = createSite(siteDeps, base)
+      const scan = createScan(db, { now, id }, site.id, ['nuclei'])
+      const deps = makeDeps({})
+      // Fails before any request is sent — outside the per-entry error handling.
+      Object.defineProperty(deps, 'entryCheckSend', {
+        get() {
+          throw new Error('entry check broke')
+        },
+      })
+
+      await runScan(deps, scan.id, new AbortController().signal)
+
+      const row = db.select().from(scans).where(eq(scans.id, scan.id)).get()
+      expect(row?.status).toBe('done')
+      expect(row?.blockedBeforeApp).toBeNull()
+      expect(deps.runners.nuclei).toHaveBeenCalledTimes(1)
+    })
+
     it('records nothing when the entries answer normally (#82)', async () => {
       const site = createSite(siteDeps, base)
       const scan = createScan(db, { now, id }, site.id, ['nuclei'])
