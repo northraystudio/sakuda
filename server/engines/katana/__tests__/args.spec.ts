@@ -39,7 +39,7 @@ describe('buildKatanaArgs', () => {
   })
 
   it('adds one -cs pair per crawl-scope regex right after the host scope, none when unrestricted', () => {
-    const base = { seedsFile: 's', outputFile: 'o', maxMinutes: 1, headers: [] }
+    const base = { seedsFile: 's', outputFile: 'o', maxMinutes: 1, headersConfigFile: null }
     const scoped = buildKatanaArgs({
       ...base,
       crawlScopeRegexes: ['^http://h:3000/rest(/.*)?(\\?.*)?$', '^http://h:3000/$'],
@@ -57,7 +57,7 @@ describe('buildKatanaArgs', () => {
   })
 
   it('adds -aff (automatic form fill) only when active form fill is on; argv unchanged otherwise', () => {
-    const base = { seedsFile: 's', outputFile: 'o', maxMinutes: 1, headers: [] }
+    const base = { seedsFile: 's', outputFile: 'o', maxMinutes: 1, headersConfigFile: null }
     const active = buildKatanaArgs({ ...base, activeFormFill: true })
     expect(active).toContain('-aff')
     // -aff sits just before -ct (after the scope block)

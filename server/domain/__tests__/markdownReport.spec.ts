@@ -15,6 +15,8 @@ const siteSnapshot: SiteSnapshot = {
   crawlScopePaths: '',
   excludePaths: '',
   nucleiRateLimit: 50,
+  nucleiMaxMinutes: null,
+  nucleiConcurrency: null,
   zapApiMaxMinutes: 10,
   zapFeSpiderMaxMinutes: 5,
   nonLocalConfirmed: true,
@@ -22,8 +24,11 @@ const siteSnapshot: SiteSnapshot = {
   nucleiEnabledRiskTags: [],
   nucleiTags: [],
   openapiAllowedOrigins: [],
+  authCheckPath: null,
   headerNames: ['Authorization'],
   browserStorageNames: [],
+  requestShapes: {},
+  secretExpiries: {},
   requiresConfirmation: false,
 }
 
@@ -45,6 +50,7 @@ const nucleiFinding: FindingView = {
     'https://example.com/ref1\nhttps://example.com/ref2\nhttps://example.com/ref3\nhttps://example.com/ref4',
   fingerprint: 'fp-1',
   isNew: true,
+  triage: null,
 }
 
 const nucleiRun: EngineRunView = {
@@ -78,6 +84,7 @@ const nucleiRun: EngineRunView = {
   },
   warnings: [],
   error: null,
+  limits: { parts: [], totalMinutes: 0, estimated: false },
 }
 
 const zapFeRun: EngineRunView = {
@@ -110,6 +117,7 @@ const zapFeRun: EngineRunView = {
     'seed path / was not among reached URLs — the spider may not have been authenticated; check the site headers',
   ],
   error: null,
+  limits: { parts: [], totalMinutes: 0, estimated: false },
 }
 
 const zapApiRun: EngineRunView = {
@@ -135,6 +143,7 @@ const zapApiRun: EngineRunView = {
   },
   warnings: [],
   error: 'zap-api produced no report.json (exit 1, signal none); see /tmp/stdout.log',
+  limits: { parts: [], totalMinutes: 0, estimated: false },
 }
 
 const detail: ScanDetail = {
@@ -146,6 +155,7 @@ const detail: ScanDetail = {
   startedAt: '2026-08-30T01:00:00.000Z',
   finishedAt: '2026-08-30T01:11:00.000Z',
   error: null,
+  authLost: null,
   counts: { critical: 0, high: 1, medium: 0, low: 2, info: 1 },
   siteName: 'shop',
   siteSnapshot,
@@ -155,8 +165,10 @@ const detail: ScanDetail = {
     previousScanId: 'scan-prev',
     newCount: 1,
     persistingCount: 0,
+    suppressedCount: 0,
     resolved: [],
   },
+  now: '2026-08-30T01:11:00.000Z',
 }
 
 describe('buildScanMarkdown', () => {
@@ -223,6 +235,7 @@ describe('buildScanMarkdown', () => {
         previousScanId: 'scan-prev',
         newCount: 0,
         persistingCount: 0,
+        suppressedCount: 0,
         resolved: [resolvedFinding],
       },
     })

@@ -27,9 +27,6 @@ describe('isActiveScanEnabled', () => {
         allowMutatingRequests: false,
         requiresConfirmation: false,
         nonLocalConfirmed: false,
-        nucleiEnabledRiskTags: [],
-        nucleiTags: [],
-        openapiAllowedOrigins: [],
       }),
     ).toBe(false)
   })
@@ -40,9 +37,6 @@ describe('isActiveScanEnabled', () => {
         allowMutatingRequests: true,
         requiresConfirmation: false,
         nonLocalConfirmed: false,
-        nucleiEnabledRiskTags: [],
-        nucleiTags: [],
-        openapiAllowedOrigins: [],
       }),
     ).toBe(true)
   })
@@ -53,9 +47,6 @@ describe('isActiveScanEnabled', () => {
         allowMutatingRequests: true,
         requiresConfirmation: true,
         nonLocalConfirmed: true,
-        nucleiEnabledRiskTags: [],
-        nucleiTags: [],
-        openapiAllowedOrigins: [],
       }),
     ).toBe(true)
   })
@@ -66,9 +57,6 @@ describe('isActiveScanEnabled', () => {
         allowMutatingRequests: true,
         requiresConfirmation: true,
         nonLocalConfirmed: false,
-        nucleiEnabledRiskTags: [],
-        nucleiTags: [],
-        openapiAllowedOrigins: [],
       }),
     ).toBe(false)
   })
