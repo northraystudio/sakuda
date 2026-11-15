@@ -1,4 +1,10 @@
-import { isLoginRejected, resolveAuthCheckUrl } from '../domain/authCheck'
+import {
+  AUTH_CHECK_BODY_HEAD_BYTES,
+  detectAuthCheckHint,
+  isLoginRejected,
+  resolveAuthCheckUrl,
+  type AuthCheckAnswer,
+} from '../domain/authCheck'
 import { rewriteLoopbackHost } from '../domain/hostAlias'
 import type { Logger } from '../lib/logger'
 import type { SiteWithHeaders } from './siteService'
@@ -10,8 +16,13 @@ export const AUTH_CHECK_INTERVAL_MS = 60_000
 /** Per-request timeout of one auth check. */
 export const AUTH_CHECK_TIMEOUT_MS = 10_000
 
-/** Sends one auth check and answers the HTTP status. */
-export type AuthCheckSend = (url: string, headers: Header[], signal: AbortSignal) => Promise<number>
+/** Sends one auth check and answers the HTTP status (plus, for a 401/403,
+ * the start of the body — see `AuthCheckAnswer`). */
+export type AuthCheckSend = (
+  url: string,
+  headers: Header[],
+  signal: AbortSignal,
+) => Promise<AuthCheckAnswer>
 
 export interface AuthCheckConfig {
   send: AuthCheckSend
@@ -30,9 +41,43 @@ export function fetchAuthStatus(localhostAlias: string | undefined): AuthCheckSe
       redirect: 'manual',
       signal,
     })
-    await res.body?.cancel()
-    return res.status
+    if (!isLoginRejected(res.status)) {
+      await res.body?.cancel()
+      return { status: res.status, bodyHead: null }
+    }
+    try {
+      return { status: res.status, bodyHead: await readBodyHead(res, AUTH_CHECK_BODY_HEAD_BYTES) }
+    } catch (e) {
+      // The status is the verdict; a body that will not read only loses the hint.
+      return {
+        status: res.status,
+        bodyHead: null,
+        bodyReadError: e instanceof Error ? e.message : String(e),
+      }
+    }
   }
+}
+
+/** Reads at most `maxBytes` of the body and drops the rest unread. The
+ * request's signal also bounds this read. */
+async function readBodyHead(res: Response, maxBytes: number): Promise<string> {
+  const reader = res.body?.getReader()
+  if (!reader) return ''
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read()
+      if (done) break
+      // Keep only what still fits, so the copy below is never larger than maxBytes.
+      const kept = value.subarray(0, maxBytes - total)
+      chunks.push(kept)
+      total += kept.byteLength
+    }
+  } finally {
+    await reader.cancel()
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks, total))
 }
 
 export interface AuthWatchOptions {
@@ -66,9 +111,9 @@ export function startAuthWatch(o: AuthWatchOptions): AuthWatch | null {
   let stopped = false
 
   const check = async (): Promise<void> => {
-    let status: number
+    let answer: AuthCheckAnswer
     try {
-      status = await o.config.send(
+      answer = await o.config.send(
         url,
         o.site.headers,
         AbortSignal.any([ac.signal, AbortSignal.timeout(AUTH_CHECK_TIMEOUT_MS)]),
@@ -83,9 +128,16 @@ export function startAuthWatch(o: AuthWatchOptions): AuthWatch | null {
       return
     }
     if (stopped) return
+    const { status } = answer
     if (isLoginRejected(status)) {
       stopped = true
-      o.onLost({ detectedAt: o.now().toISOString(), path, status })
+      if (answer.bodyReadError)
+        o.logger.warn(
+          { operation: 'authCheck', path, status, err: answer.bodyReadError },
+          'could not read the rejection body; recording the lost login without a hint',
+        )
+      const hint = detectAuthCheckHint(answer)
+      o.onLost({ detectedAt: o.now().toISOString(), path, status, ...(hint ? { hint } : {}) })
       return
     }
     schedule()

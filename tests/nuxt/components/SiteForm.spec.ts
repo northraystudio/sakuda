@@ -374,7 +374,12 @@ describe('SiteForm', () => {
   })
 
   it('Check login sends the form values and shows the verdict in color (#74)', async () => {
-    const checkAuth = vi.fn(async () => ({ outcome: 'ok' as const, status: 200, path: '/me' }))
+    const checkAuth = vi.fn(async () => ({
+      outcome: 'ok' as const,
+      status: 200,
+      path: '/me',
+      hint: null,
+    }))
     const wrapper = await mountSuspended(SiteForm, {
       props: { submitting: false, errorMessage: null, checkAuth },
     })
@@ -404,7 +409,12 @@ describe('SiteForm', () => {
   })
 
   it('Check login result goes stale when a header changes (#74)', async () => {
-    const checkAuth = vi.fn(async () => ({ outcome: 'ok' as const, status: 200, path: '/me' }))
+    const checkAuth = vi.fn(async () => ({
+      outcome: 'ok' as const,
+      status: 200,
+      path: '/me',
+      hint: null,
+    }))
     const wrapper = await mountSuspended(SiteForm, {
       props: { submitting: false, errorMessage: null, checkAuth },
     })
@@ -428,6 +438,7 @@ describe('SiteForm', () => {
       outcome: 'redirect' as const,
       status: 302,
       path: '/me',
+      hint: null,
     }))
     const wrapper = await mountSuspended(SiteForm, {
       props: { submitting: false, errorMessage: null, checkAuth },
@@ -437,6 +448,30 @@ describe('SiteForm', () => {
     await wrapper.find('[data-testid="auth-check-run"]').trigger('click')
     await vi.waitFor(() =>
       expect(wrapper.find('[data-testid="auth-check-result"]').text()).toContain('401/403'),
+    )
+  })
+
+  it.each([
+    ['a block page in front of the app', 'blocked-before-app' as const, 'allowedHosts'],
+    ["the app's own rejection", null, 'Not logged in'],
+  ])('explains a 403 from %s (#79)', async (_kind, hint, expected) => {
+    const checkAuth = vi.fn(async () => ({
+      outcome: 'rejected' as const,
+      status: 403,
+      path: '/me',
+      hint,
+    }))
+    const wrapper = await mountSuspended(SiteForm, {
+      props: { submitting: false, errorMessage: null, checkAuth },
+    })
+    await wrapper.find('[data-testid="front-base-url"]').setValue('http://localhost:3000')
+    await wrapper.find('[data-testid="auth-check-path"]').setValue('/me')
+    await wrapper.find('[data-testid="auth-check-run"]').trigger('click')
+    await vi.waitFor(() =>
+      expect(wrapper.find('[data-testid="auth-check-result"]').text()).toContain(expected),
+    )
+    expect(wrapper.find('[data-testid="auth-check-result"]').attributes('data-outcome')).toBe(
+      'rejected',
     )
   })
 

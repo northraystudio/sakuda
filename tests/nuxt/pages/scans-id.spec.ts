@@ -217,6 +217,26 @@ describe('pages/scans/[id]', () => {
       expect(notice.exists()).toBe(true)
       expect(notice.text()).toContain('api:/me')
       expect(notice.text()).toContain('401')
+      expect(notice.find('[data-testid="auth-lost-hint"]').exists()).toBe(false)
+    })
+
+    it('explains a lost login that came from a block page in front of the app (#79)', async () => {
+      polling.state.value = scanDetailFixture({
+        status: 'running',
+        authLost: {
+          detectedAt: '2026-01-01T00:03:00.000Z',
+          path: '/me',
+          status: 403,
+          hint: 'blocked-before-app',
+        },
+      })
+      const wrapper = await mountPage()
+      const hint = wrapper.find('[data-testid="auth-lost-hint"]')
+      expect(hint.exists()).toBe(true)
+      expect(hint.text()).toContain('allowedHosts')
+      expect(wrapper.find('[data-testid="auth-lost-notice"]').text()).not.toContain(
+        'logged-out session',
+      )
     })
 
     it('shows no notice while the login holds', async () => {

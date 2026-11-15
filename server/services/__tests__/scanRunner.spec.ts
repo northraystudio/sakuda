@@ -320,7 +320,7 @@ describe('runScan', () => {
       const site = createSite(siteDeps, { ...base, authCheckPath: '/me' })
       const scan = createScan(db, { now, id }, site.id, ['nuclei', 'zap-fe'])
       let status = 200
-      const send = vi.fn(async () => status)
+      const send = vi.fn(async () => ({ status, bodyHead: null }))
       const deps = {
         ...makeDeps({
           // The login breaks while nuclei runs; wait until the check sees it.
@@ -354,7 +354,7 @@ describe('runScan', () => {
     it('never checks, and leaves authLost null, when the site has no check path', async () => {
       const site = createSite(siteDeps, base)
       const scan = createScan(db, { now, id }, site.id, ['nuclei'])
-      const send = vi.fn(async () => 401)
+      const send = vi.fn(async () => ({ status: 401, bodyHead: null }))
 
       await runScan(
         { ...makeDeps({}), authCheck: { send, intervalMs: 5 } },

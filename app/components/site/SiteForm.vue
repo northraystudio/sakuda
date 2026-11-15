@@ -368,7 +368,10 @@ const authCheckView = computed(() => {
     case 'rejected':
       return {
         cls: 'border-sale text-sale',
-        text: `Not logged in — ${r.path} answered ${r.status}. Check the headers above.`,
+        text:
+          r.hint === 'blocked-before-app'
+            ? `${r.path} answered ${r.status} with a block page from something in front of the app (a dev server's host check such as Vite allowedHosts, a proxy or a WAF) — the login itself may be fine. Allow the host sakuda uses there (host.docker.internal when the target runs on localhost), then check again.`
+            : `Not logged in — ${r.path} answered ${r.status}. Check the headers above.`,
       }
     case 'redirect':
       return {

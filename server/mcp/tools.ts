@@ -554,7 +554,10 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
         'ok (2xx), rejected (401/403 — the saved login does not work), redirect (3xx — a ' +
         'scan cannot detect a lost login on this path; pick one that answers 401/403), ' +
         'unexpected (another status) or no-answer (timeout / connection error). Requires ' +
-        'authCheckPath on the site. Header values are never returned.',
+        'authCheckPath on the site. hint is "blocked-before-app" when a 401/403 body is a ' +
+        'known block page of something in front of the app (e.g. Vite allowedHosts, a proxy) ' +
+        '— then the login may be fine and the host sakuda uses needs allowing there; null ' +
+        'otherwise. authLost on a scan carries the same hint. Header values are never returned.',
       inputSchema: z.object({ siteId: z.string().min(1) }),
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
