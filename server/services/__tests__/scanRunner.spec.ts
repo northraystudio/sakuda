@@ -13,6 +13,7 @@ import { createSiteCipher, DecryptError } from '../../domain/headerCipher'
 import { EngineError, type EngineOutput, type EngineRunner } from '../../engines/types'
 import { logger } from '../../lib/logger'
 import { createSite, type SiteServiceDeps } from '../siteService'
+import type { AuthCheckSend } from '../authWatch'
 import { createScan } from '../scanService'
 import { runScan, USER_CANCEL_REASON, type ScanRunnerDeps } from '../scanRunner'
 import { SiteInputSchema } from '#shared/schemas/site'
@@ -59,7 +60,17 @@ function makeDeps(runners: Partial<Record<Engine, EngineRunner>>): ScanRunnerDep
     dalfox: vi.fn(async () => successOutput()),
     ...runners,
   }
-  return { db, env, cipher: siteDeps.cipher, runners: full, logger, now, id }
+  return {
+    db,
+    env,
+    cipher: siteDeps.cipher,
+    runners: full,
+    logger,
+    now,
+    id,
+    // No real request to the target in tests: every entry answers normally.
+    entryCheckSend: vi.fn<AuthCheckSend>(async () => ({ status: 200, bodyHead: null })),
+  }
 }
 
 beforeEach(() => {
@@ -314,6 +325,41 @@ describe('runScan', () => {
       solution: null,
       reference: null,
       raw: {},
+    })
+
+    it('records an entry that answers a block page at scan start, and still runs every engine (#82)', async () => {
+      const site = createSite(siteDeps, base)
+      const scan = createScan(db, { now, id }, site.id, ['nuclei', 'zap-fe'])
+      const entryCheckSend = vi.fn<AuthCheckSend>(async () => ({
+        status: 403,
+        bodyHead: 'Blocked request. This host ("host.docker.internal") is not allowed.',
+      }))
+      const deps = { ...makeDeps({}), entryCheckSend }
+
+      await runScan(deps, scan.id, new AbortController().signal)
+
+      const row = db.select().from(scans).where(eq(scans.id, scan.id)).get()
+      expect(row?.blockedBeforeApp).toEqual({
+        detectedAt: expect.any(String),
+        entries: [{ entry: 'front', status: 403 }],
+      })
+      expect(row?.status).toBe('done')
+      expect(deps.runners.nuclei).toHaveBeenCalledTimes(1)
+      expect(deps.runners['zap-fe']).toHaveBeenCalledTimes(1)
+      expect(entryCheckSend).toHaveBeenCalledWith(
+        `${site.frontBaseUrl}/`,
+        [],
+        expect.any(AbortSignal),
+      )
+    })
+
+    it('records nothing when the entries answer normally (#82)', async () => {
+      const site = createSite(siteDeps, base)
+      const scan = createScan(db, { now, id }, site.id, ['nuclei'])
+      await runScan(makeDeps({}), scan.id, new AbortController().signal)
+      const row = db.select().from(scans).where(eq(scans.id, scan.id)).get()
+      expect(row?.blockedBeforeApp).toBeNull()
+      expect(row?.status).toBe('done')
     })
 
     it('records a login lost mid-scan on the scan, keeping the scan running to the end', async () => {

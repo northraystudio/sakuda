@@ -21,6 +21,7 @@ export function toScanSummary(row: ScanRow, counts: SeverityCounts): ScanSummary
     finishedAt: row.finishedAt,
     error: row.error,
     authLost: row.authLost ?? null,
+    blockedBeforeApp: row.blockedBeforeApp ?? null,
     counts,
   }
 }
@@ -108,6 +109,7 @@ export function createScan(
     siteSnapshot: toSiteSnapshot(site),
     error: null,
     authLost: null,
+    blockedBeforeApp: null,
     createdAt,
     startedAt: null,
     finishedAt: null,

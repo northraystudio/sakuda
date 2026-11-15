@@ -301,7 +301,10 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
         '(new/persisting counts and the resolved findings). Use list_findings for the findings. ' +
         'authLost is set (time, path, status) when the site’s login check saw 401/403 during ' +
         'the scan: results after that time may be from a logged-out session — cancel_scan ' +
-        'stops a running scan. ' +
+        'stops a running scan. blockedBeforeApp is set (time, entries front/api with status) ' +
+        'when the scan-start check got a block page of something in front of the app (e.g. ' +
+        'Vite allowedHosts, a proxy): engine requests are likely blocked too, so few or no ' +
+        'findings do not mean the site is clean — the host sakuda uses must be allowed there. ' +
         `${UNTRUSTED_NOTE} ${REVEAL_NOTE}`,
       inputSchema: z.object({ scanId: z.string().min(1), reveal: z.boolean().optional() }),
       annotations: readOnly,

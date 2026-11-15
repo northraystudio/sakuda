@@ -17,6 +17,7 @@ function scanFixture(overrides: Partial<ScanDetail> = {}): ScanDetail {
     finishedAt: null,
     error: null,
     authLost: null,
+    blockedBeforeApp: null,
     counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
     siteName: 'Example',
     siteSnapshot: {

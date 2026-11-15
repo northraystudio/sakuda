@@ -76,6 +76,8 @@ function makeLoop(runners: Partial<Record<Engine, EngineRunner>>, discover?: Dis
     now,
     id,
     pollMs: 10,
+    // No real request to the target in tests: every entry answers normally.
+    entryCheckSend: vi.fn(async () => ({ status: 200, bodyHead: null })),
   })
   loops.push(loop)
   return { loop, runners: full, discover: discoverFn }

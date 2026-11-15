@@ -44,6 +44,7 @@ function siteFixture(overrides: Partial<SiteListItem> = {}): SiteListItem {
       finishedAt: '2026-01-02T00:05:00.000Z',
       error: null,
       authLost: null,
+      blockedBeforeApp: null,
       counts: { critical: 1, high: 2, medium: 0, low: 3, info: 4 },
     },
     ...overrides,

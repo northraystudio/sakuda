@@ -8,6 +8,7 @@ import type {
   RiskTag,
   SeverityCounts,
   ScanAuthLost,
+  ScanBlockedBeforeApp,
   SiteSnapshot,
   TriageStatus,
 } from '#shared/types/api'
@@ -78,6 +79,8 @@ export const scans = sqliteTable(
     error: text('error'),
     /** First time the auth check saw the login rejected (#74); null → never. */
     authLost: text('auth_lost', { mode: 'json' }).$type<ScanAuthLost>(),
+    /** Entries that answered a block page at scan start (#82); null → none seen. */
+    blockedBeforeApp: text('blocked_before_app', { mode: 'json' }).$type<ScanBlockedBeforeApp>(),
     createdAt: text('created_at').notNull(),
     startedAt: text('started_at'),
     finishedAt: text('finished_at'),

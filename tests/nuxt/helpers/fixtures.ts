@@ -58,6 +58,7 @@ export function scanDetailFixture(overrides: Partial<ScanDetail> = {}): ScanDeta
     finishedAt: '2026-01-01T00:05:00.000Z',
     error: null,
     authLost: null,
+    blockedBeforeApp: null,
     counts: { critical: 1, high: 2, medium: 3, low: 4, info: 5 },
     siteName: 'Example',
     siteSnapshot: {
