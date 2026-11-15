@@ -26,7 +26,7 @@ beforeEach(() => {
     now: () => new Date('2026-02-01T00:00:00.000Z'),
     id: randomUUID,
   }
-  send = vi.fn<AuthCheckSend>(async () => 200)
+  send = vi.fn<AuthCheckSend>(async () => ({ status: 200, bodyHead: null }))
   deps = { site: siteDeps, send, logger }
 })
 
@@ -53,7 +53,7 @@ describe('checkAuthDraft', () => {
       site.id,
       draft({ headers: [{ name: 'Authorization' }, { name: 'X-Tenant', value: 'a' }] }),
     )
-    expect(result).toEqual({ outcome: 'ok', status: 200, path: '/me' })
+    expect(result).toEqual({ outcome: 'ok', status: 200, path: '/me', hint: null })
     expect(send).toHaveBeenCalledWith(
       'http://localhost:3000/me',
       [
@@ -99,6 +99,30 @@ describe('checkAuthDraft', () => {
       outcome: 'no-answer',
       status: null,
       path: '/me',
+      hint: null,
+    })
+  })
+
+  it('keeps the rejected verdict but adds a hint for a block page in front of the app (#79)', async () => {
+    send.mockResolvedValueOnce({
+      status: 403,
+      bodyHead: 'Blocked request. This host ("host.docker.internal") is not allowed.',
+    })
+    expect(await checkAuthDraft(deps, null, draft({}))).toEqual({
+      outcome: 'rejected',
+      status: 403,
+      path: '/me',
+      hint: 'blocked-before-app',
+    })
+  })
+
+  it('answers the verdict without a hint when the rejection body will not read (#79)', async () => {
+    send.mockResolvedValueOnce({ status: 403, bodyHead: null, bodyReadError: 'aborted' })
+    expect(await checkAuthDraft(deps, null, draft({}))).toEqual({
+      outcome: 'rejected',
+      status: 403,
+      path: '/me',
+      hint: null,
     })
   })
 })
@@ -106,11 +130,12 @@ describe('checkAuthDraft', () => {
 describe('checkSavedSiteAuth', () => {
   it('checks the saved path with the saved headers', async () => {
     const site = storedSite({ authCheckPath: '/account' })
-    send.mockResolvedValueOnce(401)
+    send.mockResolvedValueOnce({ status: 401, bodyHead: '{"error":"unauthorized"}' })
     expect(await checkSavedSiteAuth(deps, site.id)).toEqual({
       outcome: 'rejected',
       status: 401,
       path: '/account',
+      hint: null,
     })
     expect(send).toHaveBeenCalledWith(
       'http://localhost:3000/account',

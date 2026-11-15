@@ -1,4 +1,4 @@
-import { classifyAuthStatus, resolveAuthCheckUrl } from '../domain/authCheck'
+import { classifyAuthStatus, detectAuthCheckHint, resolveAuthCheckUrl } from '../domain/authCheck'
 import type { Logger } from '../lib/logger'
 import { AUTH_CHECK_TIMEOUT_MS, type AuthCheckSend } from './authWatch'
 import { ServiceError } from './errors'
@@ -30,14 +30,24 @@ async function checkOnce(deps: AuthCheckDeps, target: CheckTarget): Promise<Auth
       `authCheckPath "${path}" needs an API base URL (it starts with "api:")`,
     )
   try {
-    const status = await deps.send(url, target.headers, AbortSignal.timeout(AUTH_CHECK_TIMEOUT_MS))
-    return { outcome: classifyAuthStatus(status), status, path }
+    const answer = await deps.send(url, target.headers, AbortSignal.timeout(AUTH_CHECK_TIMEOUT_MS))
+    if (answer.bodyReadError)
+      deps.logger.warn(
+        { operation: 'authCheck.once', path, status: answer.status, err: answer.bodyReadError },
+        'could not read the rejection body; answering the verdict without a hint',
+      )
+    return {
+      outcome: classifyAuthStatus(answer.status),
+      status: answer.status,
+      path,
+      hint: detectAuthCheckHint(answer),
+    }
   } catch (e) {
     deps.logger.warn(
       { operation: 'authCheck.once', path, err: e instanceof Error ? e.message : String(e) },
       'login check got no answer (timeout or connection error) — check the base URL is reachable from sakuda',
     )
-    return { outcome: 'no-answer', status: null, path }
+    return { outcome: 'no-answer', status: null, path, hint: null }
   }
 }
 

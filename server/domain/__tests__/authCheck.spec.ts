@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { classifyAuthStatus, isLoginRejected, resolveAuthCheckUrl } from '../authCheck'
+import {
+  classifyAuthStatus,
+  detectAuthCheckHint,
+  isLoginRejected,
+  resolveAuthCheckUrl,
+} from '../authCheck'
 
 const site = {
   frontBaseUrl: 'http://localhost:3000',
@@ -56,5 +61,34 @@ describe('classifyAuthStatus', () => {
     [500, 'unexpected'],
   ] as const)('reads %i as %s', (status, outcome) => {
     expect(classifyAuthStatus(status)).toBe(outcome)
+  })
+})
+
+describe('detectAuthCheckHint', () => {
+  const viteBlock =
+    'Blocked request. This host ("host.docker.internal") is not allowed.\n' +
+    'To allow this host, add "host.docker.internal" to `server.allowedHosts` in vite.config.js.'
+
+  it.each([401, 403])('flags the Vite allowedHosts block page on %i', (status) => {
+    expect(detectAuthCheckHint({ status, bodyHead: viteBlock })).toBe('blocked-before-app')
+  })
+
+  it.each([
+    ['JSON', '{"error":"unauthorized"}'],
+    ['HTML', '<!doctype html><html><body><h1>403 Forbidden</h1></body></html>'],
+    ['plain text', 'Forbidden'],
+    ['an empty body', ''],
+  ])("leaves the target's own 403 with %s alone", (_kind, bodyHead) => {
+    expect(detectAuthCheckHint({ status: 403, bodyHead })).toBeNull()
+  })
+
+  it('is null when the body could not be read', () => {
+    expect(
+      detectAuthCheckHint({ status: 403, bodyHead: null, bodyReadError: 'aborted' }),
+    ).toBeNull()
+  })
+
+  it.each([200, 302, 404, 500])('never flags a %i, whatever the body', (status) => {
+    expect(detectAuthCheckHint({ status, bodyHead: viteBlock })).toBeNull()
   })
 })

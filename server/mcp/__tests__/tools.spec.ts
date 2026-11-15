@@ -38,7 +38,7 @@ beforeEach(() => {
     now: () => new Date('2026-01-01T00:00:00Z'),
     id: () => `id-${++n}`,
   }
-  authCheckSend = vi.fn<AuthCheckSend>(async () => 200)
+  authCheckSend = vi.fn<AuthCheckSend>(async () => ({ status: 200, bodyHead: null }))
   jobLoop = { cancelScan: vi.fn(() => true) }
 })
 
@@ -721,11 +721,12 @@ describe('sakuda MCP login check and stop (#74)', () => {
     deps.db.update(sites).set({ authCheckPath: '/me' }).where(eq(sites.id, site.id)).run()
     const c = await connect()
 
-    authCheckSend.mockResolvedValueOnce(200)
+    authCheckSend.mockResolvedValueOnce({ status: 200, bodyHead: null })
     expect((await call(c, 'check_auth', { siteId: site.id })).json).toEqual({
       outcome: 'ok',
       status: 200,
       path: '/me',
+      hint: null,
     })
     expect(authCheckSend).toHaveBeenCalledWith(
       'http://localhost:3001/me',
@@ -733,12 +734,23 @@ describe('sakuda MCP login check and stop (#74)', () => {
       expect.any(AbortSignal),
     )
 
-    authCheckSend.mockResolvedValueOnce(401)
+    // A block page in front of the app keeps the verdict and adds the hint (#79).
+    authCheckSend.mockResolvedValueOnce({
+      status: 403,
+      bodyHead: 'Blocked request. This host ("host.docker.internal") is not allowed.',
+    })
+    expect((await call(c, 'check_auth', { siteId: site.id })).json).toMatchObject({
+      outcome: 'rejected',
+      status: 403,
+      hint: 'blocked-before-app',
+    })
+
+    authCheckSend.mockResolvedValueOnce({ status: 401, bodyHead: null })
     const rejected = await call(c, 'check_auth', { siteId: site.id })
     expect(rejected.json.outcome).toBe('rejected')
     expect(rejected.text).not.toContain(TOKEN)
 
-    authCheckSend.mockResolvedValueOnce(302)
+    authCheckSend.mockResolvedValueOnce({ status: 302, bodyHead: null })
     expect((await call(c, 'check_auth', { siteId: site.id })).json.outcome).toBe('redirect')
 
     authCheckSend.mockRejectedValueOnce(new Error('ECONNREFUSED'))
@@ -746,6 +758,7 @@ describe('sakuda MCP login check and stop (#74)', () => {
       outcome: 'no-answer',
       status: null,
       path: '/me',
+      hint: null,
     })
   })
 

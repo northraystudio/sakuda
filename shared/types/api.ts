@@ -141,11 +141,17 @@ export interface ScanSummary {
  * `redirect` 3xx, `unexpected` any other status, `no-answer` timeout or
  * connection error. */
 export type AuthCheckOutcome = 'ok' | 'rejected' | 'redirect' | 'unexpected' | 'no-answer'
+/** Extra reading of a 401/403 (#79): `blocked-before-app` when the body is a
+ * known block page of something in front of the target (e.g. Vite's
+ * `allowedHosts` check), so the rejection likely says nothing about the login. */
+export type AuthCheckHint = 'blocked-before-app'
 export interface AuthCheckResult {
   outcome: AuthCheckOutcome
   /** null when there was no answer. */
   status: number | null
   path: string
+  /** null when the answer gave no reason to doubt the verdict. */
+  hint: AuthCheckHint | null
 }
 /** What the scan's auth check saw when the login stopped working: when, at
  * which `[api:]/path`, and the status it got. No header or cookie values. */
@@ -153,6 +159,8 @@ export interface ScanAuthLost {
   detectedAt: string
   path: string
   status: number
+  /** Absent on scans recorded before #79 and when nothing looked off. */
+  hint?: AuthCheckHint
 }
 /** `POST /api/sites/:id/scans` answer: the queued scan plus non-blocking
  * warnings (expired / soon-expiring auth secrets, #17). */
