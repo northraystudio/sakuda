@@ -78,8 +78,15 @@ describe('detectAuthCheckHint', () => {
     ['HTML', '<!doctype html><html><body><h1>403 Forbidden</h1></body></html>'],
     ['plain text', 'Forbidden'],
     ['an empty body', ''],
+    ['the phrase quoted mid-body', '{"error":"forbidden","detail":"Blocked request. This host"}'],
   ])("leaves the target's own 403 with %s alone", (_kind, bodyHead) => {
     expect(detectAuthCheckHint({ status: 403, bodyHead })).toBeNull()
+  })
+
+  it('reads the opening after leading whitespace', () => {
+    expect(detectAuthCheckHint({ status: 403, bodyHead: `\n  ${viteBlock}` })).toBe(
+      'blocked-before-app',
+    )
   })
 
   it('is null when the body could not be read', () => {

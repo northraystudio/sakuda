@@ -130,6 +130,19 @@ describe('fetchAuthStatus (#79)', () => {
     expect(answer.bodyHead).toHaveLength(1024)
   })
 
+  it('keeps at most 1KB of a body that arrives as one large chunk', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('Blocked request. ' + 'y'.repeat(64 * 1024)))
+        c.close()
+      },
+    })
+    respond(new Response(body, { status: 403 }))
+    const answer = await send()
+    expect(answer.bodyHead).toHaveLength(1024)
+    expect(answer.bodyHead?.startsWith('Blocked request.')).toBe(true)
+  })
+
   it('does not read the body of any other status', async () => {
     respond(new Response('welcome', { status: 200 }))
     expect(await send()).toEqual({ status: 200, bodyHead: null })

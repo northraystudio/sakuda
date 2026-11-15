@@ -69,13 +69,15 @@ async function readBodyHead(res: Response, maxBytes: number): Promise<string> {
     while (total < maxBytes) {
       const { done, value } = await reader.read()
       if (done) break
-      chunks.push(value)
-      total += value.byteLength
+      // Keep only what still fits, so the copy below is never larger than maxBytes.
+      const kept = value.subarray(0, maxBytes - total)
+      chunks.push(kept)
+      total += kept.byteLength
     }
   } finally {
     await reader.cancel()
   }
-  return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, maxBytes))
+  return new TextDecoder().decode(Buffer.concat(chunks, total))
 }
 
 export interface AuthWatchOptions {

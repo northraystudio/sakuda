@@ -16,9 +16,10 @@ export interface AuthCheckAnswer {
 export const AUTH_CHECK_BODY_HEAD_BYTES = 1024
 
 /** Opening text of block pages served by something in front of the target
- * app, not by the app itself (#79). Exact phrases only, so the target's own
- * 401/403 — JSON, HTML or plain text — never gets the hint. Add one line per
- * block page met in practice. */
+ * app, not by the app itself (#79). Matched at the start of the body only, so
+ * the target's own 401/403 — JSON, HTML or plain text, even one quoting the
+ * phrase — never gets the hint. Add one line per block page met in practice;
+ * one identified only by text mid-body needs a different match. */
 const BLOCKED_BEFORE_APP_PHRASES: readonly string[] = [
   // Vite dev server's host check (`server.allowedHosts`).
   'Blocked request. This host',
@@ -29,7 +30,8 @@ const BLOCKED_BEFORE_APP_PHRASES: readonly string[] = [
 export function detectAuthCheckHint(answer: AuthCheckAnswer): AuthCheckHint | null {
   const { status, bodyHead } = answer
   if (!isLoginRejected(status) || !bodyHead) return null
-  return BLOCKED_BEFORE_APP_PHRASES.some((p) => bodyHead.includes(p)) ? 'blocked-before-app' : null
+  const head = bodyHead.trimStart()
+  return BLOCKED_BEFORE_APP_PHRASES.some((p) => head.startsWith(p)) ? 'blocked-before-app' : null
 }
 
 /**
