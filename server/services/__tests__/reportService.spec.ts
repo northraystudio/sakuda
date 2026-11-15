@@ -23,7 +23,13 @@ let db: Db
 let siteDeps: SiteServiceDeps
 let n = 0
 const detailDeps = {
-  env: { nucleiMaxMinutes: 60, httpxMaxMinutes: 5, dalfoxMaxMinutes: 10, engineGraceMinutes: 10 },
+  env: {
+    nucleiMaxMinutes: 60,
+    httpxMaxMinutes: 5,
+    dalfoxMaxMinutes: 10,
+    boundaryMaxMinutes: 5,
+    engineGraceMinutes: 10,
+  },
   now: () => new Date('2026-01-01T00:07:00Z'),
 }
 
@@ -50,6 +56,7 @@ function insertScan(
       status: 'done',
       engines: ['nuclei'],
       siteSnapshot: {
+        id: overrides.siteId,
         name: 'shop',
         frontBaseUrl: 'http://localhost:3001/',
         apiBaseUrl: null,
@@ -61,6 +68,8 @@ function insertScan(
         crawlScopePaths: '',
         excludePaths: '',
         nucleiRateLimit: 50,
+        nucleiMaxMinutes: null,
+        nucleiConcurrency: null,
         zapApiMaxMinutes: 45,
         zapFeSpiderMaxMinutes: 5,
         nonLocalConfirmed: false,
@@ -68,8 +77,11 @@ function insertScan(
         nucleiEnabledRiskTags: [],
         nucleiTags: [],
         openapiAllowedOrigins: [],
+        authCheckPath: null,
         headerNames: [],
         browserStorageNames: [],
+        requestShapes: {},
+        secretExpiries: {},
         requiresConfirmation: false,
       },
       error: null,

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { EngineError } from '../../types'
 import { normalizeZapReport, parseZapReport, stripHtml, zapRiskToLevel } from '../report'
+import type { SeverityLevel } from '#shared/types/api'
 
 const fixturePath = fileURLToPath(new URL('./fixtures/zap-report.json', import.meta.url))
 const fixtureText = readFileSync(fixturePath, 'utf-8')
@@ -107,6 +108,9 @@ describe('normalizeZapReport', () => {
   })
 
   it('does not emit a finding for the info-level alert (not a reported severity)', () => {
-    expect(result.findings.some((f) => f.severity === 'info')).toBe(false)
+    // NewFinding.severity is typed to the reported levels only; read it as the
+    // wider SeverityLevel so this stays a runtime check of normalize's filter.
+    const levelOf = (f: { severity: SeverityLevel }): SeverityLevel => f.severity
+    expect(result.findings.some((f) => levelOf(f) === 'info')).toBe(false)
   })
 })

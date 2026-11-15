@@ -82,7 +82,14 @@ describe('engineTimeBudget (#84)', () => {
   it('timeBudgetEnv picks the env fields the budget depends on', () => {
     expect(
       timeBudgetEnv({
-        nuclei: { bin: 'nuclei', templatesDir: '/t', dastTemplatesDir: '/d', maxMinutes: 30 },
+        nuclei: {
+          bin: 'nuclei',
+          templatesDir: '/t',
+          dastTemplatesDir: '/d',
+          maxMinutes: 30,
+          concurrency: 25,
+          oast: { mode: 'public' },
+        },
         httpx: { bin: 'httpx', maxMinutes: 3, pruneStatusCodes: [] },
         dalfox: { bin: 'dalfox', maxMinutes: 12, concurrency: 10, maxTargets: 50 },
         boundary: { maxRequests: 100, maxMinutes: 4, requestTimeoutSeconds: 10 },

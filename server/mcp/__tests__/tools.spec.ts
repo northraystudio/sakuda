@@ -19,6 +19,7 @@ const timeBudgetEnv = {
   nucleiMaxMinutes: 60,
   httpxMaxMinutes: 5,
   dalfoxMaxMinutes: 10,
+  boundaryMaxMinutes: 5,
   engineGraceMinutes: 10,
 }
 
