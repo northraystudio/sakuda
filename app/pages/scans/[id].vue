@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AuthLostNotice from '~/components/scan/AuthLostNotice.vue'
+import BlockedEntryNotice from '~/components/scan/BlockedEntryNotice.vue'
 import DiffSummary from '~/components/scan/DiffSummary.vue'
 import EngineRunPanel from '~/components/scan/EngineRunPanel.vue'
 import IntrusionProgress from '~/components/scan/IntrusionProgress.vue'
@@ -87,6 +88,13 @@ const totalCounts = computed(() => {
 
 <template>
   <div>
+    <BlockedEntryNotice
+      v-if="state?.blockedBeforeApp"
+      class="mb-4"
+      :blocked="state.blockedBeforeApp"
+      :front-base-url="state.siteSnapshot.frontBaseUrl"
+      :api-base-url="state.siteSnapshot.apiBaseUrl"
+    />
     <AuthLostNotice v-if="state?.authLost" class="mb-4" :auth-lost="state.authLost" />
 
     <div

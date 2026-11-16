@@ -135,6 +135,8 @@ export interface ScanSummary {
   error: string | null
   /** Set once the auth check saw the login rejected mid-scan (#74). */
   authLost: ScanAuthLost | null
+  /** Set when an entry answered a known block page at scan start (#82). */
+  blockedBeforeApp: ScanBlockedBeforeApp | null
   counts: SeverityCounts
 }
 /** Verdict of a one-off login check (#74): `ok` 2xx, `rejected` 401/403,
@@ -161,6 +163,20 @@ export interface ScanAuthLost {
   status: number
   /** Absent on scans recorded before #79 and when nothing looked off. */
   hint?: AuthCheckHint
+}
+/** Which base URL of the site the entry check (#82) sent to. */
+export type ScanEntry = 'front' | 'api'
+/** An entry that answered a known block page of something in front of the
+ * target (#82, same rule as the auth check's `blocked-before-app` hint). */
+export interface ScanBlockedEntry {
+  entry: ScanEntry
+  status: number
+}
+/** What the scan-start entry check saw: when, and which entries were
+ * blocked. No header values, URLs beyond the entry name, or body text. */
+export interface ScanBlockedBeforeApp {
+  detectedAt: string
+  entries: ScanBlockedEntry[]
 }
 /** `POST /api/sites/:id/scans` answer: the queued scan plus non-blocking
  * warnings (expired / soon-expiring auth secrets, #17). */

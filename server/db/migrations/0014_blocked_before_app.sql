@@ -1,0 +1,1 @@
+ALTER TABLE `scans` ADD `blocked_before_app` text;

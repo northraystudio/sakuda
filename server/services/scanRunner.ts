@@ -13,10 +13,12 @@ import {
   fetchAuthStatus,
   startAuthWatch,
   type AuthCheckConfig,
+  type AuthCheckSend,
   type AuthWatch,
 } from './authWatch'
+import { findBlockedEntries } from './entryCheck'
 import { loadSiteWithHeaders } from './siteService'
-import type { Engine } from '#shared/types/api'
+import type { Engine, ScanBlockedEntry } from '#shared/types/api'
 import { emptyCounts } from '#shared/utils/severity'
 
 export interface ScanRunnerDeps {
@@ -30,6 +32,9 @@ export interface ScanRunnerDeps {
   /** Auth check sender and interval (#74); defaults to a real fetch every
    * AUTH_CHECK_INTERVAL_MS. Tests inject a fake. */
   authCheck?: AuthCheckConfig
+  /** Sender of the scan-start entry check (#82); defaults to the same real
+   * fetch as the auth check. Tests inject a fake. */
+  entryCheckSend?: AuthCheckSend
 }
 
 /** The abort reason the job loop uses when the user stops a scan (#74), so
@@ -104,10 +109,45 @@ export async function runScan(
         }
       },
     })
+    // Entry check (#82): every engine request goes to these entries, so a
+    // block page there means the results are likely empty. Recorded as a
+    // warning; the scan still runs (Stop scan is the user's call).
+    const recordBlockedEntries = async (): Promise<void> => {
+      let entries: ScanBlockedEntry[]
+      try {
+        entries = await findBlockedEntries({
+          site,
+          send: deps.entryCheckSend ?? fetchAuthStatus(deps.env.localhostAlias),
+          logger: log,
+          signal,
+        })
+      } catch (e) {
+        // A warning, never a reason to fail the scan.
+        log.warn(
+          { operation: 'entryCheck', err: e instanceof Error ? e.message : String(e) },
+          'entry check failed; the scan continues without it',
+        )
+        return
+      }
+      if (entries.length === 0) return
+      log.warn(
+        { operation: 'entryCheck', entries: entries.map((e) => e.entry) },
+        'an entry answered a block page of something in front of the target; engine requests are likely blocked too',
+      )
+      try {
+        db.update(scans)
+          .set({ blockedBeforeApp: { detectedAt: deps.now().toISOString(), entries } })
+          .where(eq(scans.id, scanId))
+          .run()
+      } catch (e) {
+        log.error({ err: e }, 'failed to record blocked entries on the scan')
+      }
+    }
     let doneCount = 0
     let failedCount = 0
     let skippedCount = 0
     try {
+      await recordBlockedEntries()
       for (const engine of orderEngines(scan.engines)) {
         if (signal.aborted) {
           failedCount++

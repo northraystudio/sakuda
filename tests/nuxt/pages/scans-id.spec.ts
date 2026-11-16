@@ -239,6 +239,28 @@ describe('pages/scans/[id]', () => {
       )
     })
 
+    it('warns that the entries are blocked before the app (#82)', async () => {
+      polling.state.value = scanDetailFixture({
+        status: 'running',
+        blockedBeforeApp: {
+          detectedAt: '2026-01-01T00:00:05.000Z',
+          entries: [{ entry: 'front', status: 403 }],
+        },
+      })
+      const wrapper = await mountPage()
+      const notice = wrapper.find('[data-testid="blocked-entry-notice"]')
+      expect(notice.exists()).toBe(true)
+      expect(notice.find('[data-testid="blocked-entry-front"]').text()).toContain('403')
+      expect(notice.find('[data-testid="blocked-entry-api"]').exists()).toBe(false)
+      expect(notice.text()).toContain('allowedHosts')
+    })
+
+    it('shows no blocked-entry notice when the entries answered normally (#82)', async () => {
+      polling.state.value = scanDetailFixture({ status: 'running' })
+      const wrapper = await mountPage()
+      expect(wrapper.find('[data-testid="blocked-entry-notice"]').exists()).toBe(false)
+    })
+
     it('shows no notice while the login holds', async () => {
       polling.state.value = scanDetailFixture({ status: 'running' })
       const wrapper = await mountPage()
