@@ -59,13 +59,22 @@ afterEach(async () => {
 
 function makeLoop(runners: Partial<Record<Engine, EngineRunner>>, discover?: DiscoverRunner) {
   const full: Record<Engine, EngineRunner> = {
-    nuclei: vi.fn(async () => successOutput()),
-    'zap-api': vi.fn(async () => successOutput()),
-    'zap-fe': vi.fn(async () => successOutput()),
+    nuclei: vi.fn<EngineRunner>(async () => successOutput()),
+    'zap-api': vi.fn<EngineRunner>(async () => successOutput()),
+    'zap-fe': vi.fn<EngineRunner>(async () => successOutput()),
+    dalfox: vi.fn<EngineRunner>(async () => successOutput()),
+    boundary: vi.fn<EngineRunner>(async () => successOutput()),
     ...runners,
   }
   const discoverFn: DiscoverRunner =
-    discover ?? vi.fn(async () => ({ urls: [], meta: {}, warnings: [], exitCode: 0, signal: null }))
+    discover ??
+    vi.fn<DiscoverRunner>(async () => ({
+      urls: [],
+      meta: {},
+      warnings: [],
+      exitCode: 0,
+      signal: null,
+    }))
   const loop = createJobLoop({
     db,
     env,
@@ -104,9 +113,9 @@ describe('createJobLoop', () => {
   it('aborts a scan that is running when stop() is called', async () => {
     const site = createSite(siteDeps, base)
     const scan = createScan(db, { now, id }, site.id, ['nuclei'])
-    const hangingRunner: EngineRunner = vi.fn(
+    const hangingRunner = vi.fn<EngineRunner>(
       ({ signal }) =>
-        new Promise((_resolve, reject) => {
+        new Promise<EngineOutput>((_resolve, reject) => {
           if (signal.aborted) reject(new Error('aborted'))
           signal.addEventListener('abort', () => reject(new Error('aborted')))
         }),
@@ -131,7 +140,7 @@ describe('createJobLoop', () => {
   it('picks up a queued discovery and finishes it', async () => {
     const site = createSite(siteDeps, base)
     const discovery = createDiscovery(db, { now, id }, site.id)
-    const discover: DiscoverRunner = vi.fn(async () => ({
+    const discover = vi.fn<DiscoverRunner>(async () => ({
       urls: [{ url: 'http://localhost:3001/x', method: 'GET', statusCode: 200, source: 'spider' }],
       meta: {},
       warnings: [],
@@ -159,9 +168,9 @@ describe('createJobLoop', () => {
     const other = createSite(siteDeps, { ...base, name: 'other' })
     const first = createScan(db, { now, id }, site.id, ['nuclei'])
     const second = createScan(db, { now, id }, other.id, ['zap-fe'])
-    const hangingRunner: EngineRunner = vi.fn(
+    const hangingRunner = vi.fn<EngineRunner>(
       ({ signal }) =>
-        new Promise((_resolve, reject) => {
+        new Promise<EngineOutput>((_resolve, reject) => {
           signal.addEventListener('abort', () => reject(new Error('aborted')))
         }),
     )

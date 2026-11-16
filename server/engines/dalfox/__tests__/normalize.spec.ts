@@ -135,10 +135,17 @@ describe('normalizeDalfoxFindings', () => {
     const { findings } = normalizeDalfoxFindings(
       [
         {
+          // The schema's `.default('')` values, as parseDalfoxReport would fill them.
           type: 'V',
+          inject_type: '',
+          method: '',
           data: 'http://host.docker.internal:3001/rest/x?q=1',
           param: 'q',
+          payload: '',
+          evidence: '',
           cwe: 'CWE-79',
+          severity: '',
+          message_str: '',
         },
       ],
       (u) => u.replace('host.docker.internal', 'localhost'),

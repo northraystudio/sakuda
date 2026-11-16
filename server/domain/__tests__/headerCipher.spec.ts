@@ -46,7 +46,7 @@ describe('createHeaderCipher', () => {
     const c = createHeaderCipher(key)
     const env = c.seal(headers, 's')
     const tampered = Buffer.from(env)
-    tampered[20] ^= 0xff
+    tampered.writeUInt8(tampered.readUInt8(20) ^ 0xff, 20)
     expect(() => c.open(tampered, 's')).toThrow(DecryptError)
     expect(() => c.open(env.subarray(0, 20), 's')).toThrow(DecryptError)
     const v2 = Buffer.from(env)

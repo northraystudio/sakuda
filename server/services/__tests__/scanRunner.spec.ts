@@ -54,10 +54,11 @@ function successOutput(overrides: Partial<EngineOutput> = {}): EngineOutput {
 
 function makeDeps(runners: Partial<Record<Engine, EngineRunner>>): ScanRunnerDeps {
   const full: Record<Engine, EngineRunner> = {
-    nuclei: vi.fn(async () => successOutput()),
-    'zap-api': vi.fn(async () => successOutput()),
-    'zap-fe': vi.fn(async () => successOutput()),
-    dalfox: vi.fn(async () => successOutput()),
+    nuclei: vi.fn<EngineRunner>(async () => successOutput()),
+    'zap-api': vi.fn<EngineRunner>(async () => successOutput()),
+    'zap-fe': vi.fn<EngineRunner>(async () => successOutput()),
+    dalfox: vi.fn<EngineRunner>(async () => successOutput()),
+    boundary: vi.fn<EngineRunner>(async () => successOutput()),
     ...runners,
   }
   return {

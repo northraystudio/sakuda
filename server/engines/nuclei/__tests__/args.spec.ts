@@ -8,6 +8,7 @@ import {
   NUCLEI_PRIORITY_SIGNATURE_TAGS,
   nucleiTagPlan,
   nucleiTagsFor,
+  type NucleiArgsInput,
 } from '../args'
 import type { OastConfig } from '../../../config/env'
 
@@ -142,7 +143,6 @@ describe('buildNucleiArgs', () => {
         tags: ['xss'],
         headersConfigFile: null,
         oast: PUBLIC,
-        browserStorage: [],
       }),
     ).toContain('-omit-raw')
   })
@@ -329,9 +329,10 @@ describe('host-error guard (#82)', () => {
 
 describe('headers never on argv (#95)', () => {
   it('passes -config <file> in every phase and nothing header-related without a file', () => {
-    const withFile = { headersConfigFile: '/w/headers.json' }
-    const without = { headersConfigFile: null }
-    const signature = (h: typeof withFile) =>
+    type HeadersPart = Pick<NucleiArgsInput, 'headersConfigFile'>
+    const withFile: HeadersPart = { headersConfigFile: '/w/headers.json' }
+    const without: HeadersPart = { headersConfigFile: null }
+    const signature = (h: HeadersPart) =>
       buildNucleiArgs({
         targetsFile: 't',
         templatesDir: '/tpl',
@@ -342,7 +343,7 @@ describe('headers never on argv (#95)', () => {
         oast: PUBLIC,
         ...h,
       })
-    const dast = (h: typeof withFile) =>
+    const dast = (h: HeadersPart) =>
       buildNucleiDastArgs({
         targetsFile: 't',
         dastTemplatesDir: '/d',
@@ -354,7 +355,7 @@ describe('headers never on argv (#95)', () => {
         oast: PUBLIC,
         ...h,
       })
-    const openapi = (h: typeof withFile) =>
+    const openapi = (h: HeadersPart) =>
       buildNucleiOpenapiArgs({
         openapiFile: 'oa',
         dastTemplatesDir: '/d',
