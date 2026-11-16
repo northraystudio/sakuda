@@ -156,6 +156,7 @@ const detail: ScanDetail = {
   finishedAt: '2026-08-30T01:11:00.000Z',
   error: null,
   authLost: null,
+  blockedBeforeApp: null,
   counts: { critical: 0, high: 1, medium: 0, low: 2, info: 1 },
   siteName: 'shop',
   siteSnapshot,
