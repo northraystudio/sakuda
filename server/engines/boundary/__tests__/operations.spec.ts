@@ -210,6 +210,22 @@ describe('operationsFromOpenApi', () => {
     expect(op.skippedFields).toBe(1)
   })
 
+  it('still follows a four-hop $ref chain when the field is Optional', () => {
+    const chained = structuredClone(optionalDoc)
+    const schemas: Record<string, unknown> = chained.components.schemas
+    schemas.A = { $ref: '#/components/schemas/B' }
+    schemas.B = { $ref: '#/components/schemas/C' }
+    schemas.C = { $ref: '#/components/schemas/Rank' }
+    schemas.Loop = { $ref: '#/components/schemas/Loop' }
+    const props: Record<string, unknown> = chained.components.schemas.PartnerUpdate.properties
+    props.rank = { anyOf: [{ $ref: '#/components/schemas/A' }, { type: 'null' }] }
+    props.loop = { anyOf: [{ $ref: '#/components/schemas/Loop' }, { type: 'null' }] }
+    const { operations } = operationsFromOpenApi(JSON.stringify(chained), 'http://api.test', never)
+    const names = operations[0]!.fields.map((f) => f.name)
+    expect(names).toContain('rank')
+    expect(names).not.toContain('loop') // a cycle still ends
+  })
+
   it('plans out-of-range values for an Optional field (PartnerUpdate.importance)', () => {
     const { operations } = operationsFromOpenApi(
       JSON.stringify(optionalDoc),

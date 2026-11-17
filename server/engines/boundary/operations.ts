@@ -37,7 +37,10 @@ type Json = Record<string, unknown>
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const REF_PREFIX = '#/components/schemas/'
-const MAX_RESOLVE_DEPTH = 5
+/** Steps `resolveSchema` takes before giving up: `$ref` hops and `Optional`
+ * unwraps both count, so the cap leaves the four hops a bare `$ref` chain had
+ * before unwrapping existed, plus room for the unwraps around them. */
+const MAX_RESOLVE_DEPTH = 8
 
 /**
  * The one non-null member of an `anyOf`/`oneOf` that also allows `null` — how
