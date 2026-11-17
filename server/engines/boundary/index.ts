@@ -13,7 +13,13 @@ import {
   type Send,
 } from './acceptance'
 import { boundaryCases, type BoundaryCase } from './cases'
-import { operationsFromOpenApi, operationsFromShapes, type BoundaryOperation } from './operations'
+import {
+  operationsFromOpenApi,
+  operationsFromShapes,
+  type BoundaryOperation,
+  type SkipReason,
+  type SkippedOperation,
+} from './operations'
 
 /** A response body is only compared, never stored; cap what is read of it. */
 const MAX_RESPONSE_BYTES = 1_000_000
@@ -47,6 +53,30 @@ const KIND_NAME: Record<BoundaryCase['kind'], string> = {
 
 const SOLUTION =
   'Validate every request body on the server against the same rules the UI and the API contract state (range, length, allowed values, type, required), and reject violations with a 4xx before anything is stored. Client-side limits are not a control.'
+
+const SKIP_REASON: Record<SkipReason, string> = {
+  'no-json-body': 'they have no JSON request body',
+  'unsupported-schema': 'the body schema is not an object boundary can read',
+  'no-testable-fields': 'every body field is a nested object, an array or an unsupported type',
+  'excluded-path': 'the path matches an exclude pattern',
+  'invalid-url': 'the path does not form a valid URL on the saved base URL',
+}
+
+/** How many skipped operations one warning names before it only counts them. */
+const MAX_LISTED_OPERATIONS = 10
+
+/** One warning per reason, naming the operations, so a write operation the
+ * document declares is never left untested without the result saying so. */
+function skippedOperationWarnings(skipped: SkippedOperation[]): string[] {
+  const byReason = new Map<SkipReason, string[]>()
+  for (const s of skipped)
+    byReason.set(s.reason, [...(byReason.get(s.reason) ?? []), `${s.method} ${s.path}`])
+  return [...byReason].map(([reason, ops]) => {
+    const listed = ops.slice(0, MAX_LISTED_OPERATIONS).join(', ')
+    const more = ops.length - MAX_LISTED_OPERATIONS
+    return `${ops.length} write operation(s) in the OpenAPI document were not tested because ${SKIP_REASON[reason]}: ${listed}${more > 0 ? ` and ${more} more` : ''}`
+  })
+}
 
 const sleep = (ms: number, signal: AbortSignal): Promise<void> =>
   new Promise((resolve) => {
@@ -104,19 +134,25 @@ export const runBoundary: EngineRunner = async ({ scanId, site, env, logger, sig
   // Operations: the pasted OpenAPI's JSON-body writes (ranges known) plus the
   // approved write lines whose body shape was captured (types only).
   const apiBase = site.apiBaseUrl ?? site.frontBaseUrl
-  const fromOpenApi = site.openapiJson
-    ? operationsFromOpenApi(site.openapiJson, apiBase, isExcludedPath)
-    : []
+  const { targets } = expandNucleiTargets(site)
+  const { operations: fromOpenApi, skipped: skippedOperations } = site.openapiJson
+    ? operationsFromOpenApi(
+        site.openapiJson,
+        apiBase,
+        isExcludedPath,
+        targets.map((t) => t.url),
+      )
+    : { operations: [], skipped: [] }
   if (site.openapiJson && fromOpenApi.length === 0)
     warnings.push(
       'the pasted OpenAPI document has no POST/PUT/PATCH operation with a JSON object body that boundary can use',
     )
+  warnings.push(...skippedOperationWarnings(skippedOperations))
   const openapiUrlOnly = !!site.openapiUrl && !site.openapiJson
   if (openapiUrlOnly)
     warnings.push(
       'the site has an OpenAPI URL but no pasted JSON — boundary does not fetch it, so only wrong-type values are tried on captured body shapes (paste the document as JSON to test ranges, lengths and allowed values)',
     )
-  const { targets } = expandNucleiTargets(site)
   const fromShapes = operationsFromShapes(targets, site.requestShapes)
   const seen = new Set<string>()
   const operations: BoundaryOperation[] = []
@@ -128,7 +164,10 @@ export const runBoundary: EngineRunner = async ({ scanId, site, env, logger, sig
   }
   if (operations.length === 0)
     throw new EngineError(
-      'boundary: no write operations to test — paste an OpenAPI document with JSON request bodies, or approve POST/PUT/PATCH target lines that have a captured body shape',
+      [
+        'boundary: no write operations to test — paste an OpenAPI document with JSON request bodies, or approve POST/PUT/PATCH target lines that have a captured body shape',
+        ...skippedOperationWarnings(skippedOperations),
+      ].join('; '),
     )
 
   const planned = operations.flatMap((op) => boundaryCases(op.fields).map((c) => ({ op, c })))
@@ -301,6 +340,7 @@ export const runBoundary: EngineRunner = async ({ scanId, site, env, logger, sig
     meta: {
       operations: operations.length,
       openapiOperations: fromOpenApi.length,
+      openapiSkippedOperations: skippedOperations.length,
       shapeOperations: fromShapes.length,
       openapiUrlOnly,
       casesPlanned: planned.length,
