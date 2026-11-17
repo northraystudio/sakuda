@@ -277,6 +277,39 @@ describe('runBoundary', () => {
     expect(seen.some((s) => s.url === '/openapi.json')).toBe(false)
   })
 
+  it('names the OpenAPI write operations it could not test, and why', async () => {
+    const doc = JSON.parse(openapi('/lax')) as { paths: Record<string, unknown> }
+    doc.paths['/upload'] = {
+      post: { requestBody: { content: { 'multipart/form-data': { schema: { type: 'object' } } } } },
+    }
+    doc.paths['/admin/{id}'] = (JSON.parse(openapi('/x')) as typeof doc).paths['/x']
+    doc.paths['/tags'] = {
+      put: {
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { type: 'object', properties: { tags: { type: 'array' } } },
+            },
+          },
+        },
+      },
+    }
+    const out = await run(baseSite({ openapiJson: JSON.stringify(doc), excludePaths: '/admin/*' }))
+    const warnings = out.warnings.join('\n')
+    expect(warnings).toMatch(/1 write operation\(s\).*no JSON request body: POST \/upload/)
+    expect(warnings).toMatch(/1 write operation\(s\).*exclude pattern: POST \/admin\/\{id\}/)
+    expect(warnings).toMatch(/1 write operation\(s\).*unsupported type: PUT \/tags/)
+    expect(out.meta).toMatchObject({ openapiOperations: 1, openapiSkippedOperations: 3 })
+    expect(seen.every((s) => s.url === '/lax')).toBe(true)
+  })
+
+  it('says why when every OpenAPI write operation was unusable', async () => {
+    const doc = { paths: { '/upload': { post: {} } } }
+    await expect(run(baseSite({ openapiJson: JSON.stringify(doc) }))).rejects.toThrow(
+      /no write operations to test.*not tested because they have no JSON request body: POST \/upload/,
+    )
+  })
+
   it('fails with a runbook message when there is nothing to send', async () => {
     await expect(run(baseSite({ openapiJson: null }))).rejects.toThrow(EngineError)
   })

@@ -43,7 +43,8 @@ export interface BoundaryCase {
  * effectively unbounded and the probe would only be a large upload. */
 export const MAX_PROBE_LENGTH = 10_000
 
-const FORMAT_EXAMPLES: Record<string, string> = {
+/** A fixed, well-formed value per string `format` — also used for path ids. */
+export const FORMAT_EXAMPLES: Record<string, string> = {
   email: 'sakuda@example.com',
   uri: 'https://example.com/',
   url: 'https://example.com/',
