@@ -179,6 +179,64 @@ describe('sakuda MCP tools', () => {
     }
   })
 
+  it('get_scan marks findings gone since the previous scan as resolved or unverified (#89)', async () => {
+    const { scan } = seed()
+    // A later scan of the same site that ran one engine and found nothing.
+    const later = (id: string, engine: 'nuclei' | 'zap-fe', meta: Record<string, unknown>) => {
+      const row = deps.db.select().from(scans).where(eq(scans.id, scan.id)).get()!
+      const at = new Date(Date.parse(row.createdAt) + (id === 'scan-b' ? 1000 : 2000)).toISOString()
+      deps.db
+        .insert(scans)
+        .values({ ...row, id, engines: [engine], createdAt: at, startedAt: at, finishedAt: at })
+        .run()
+      deps.db
+        .insert(engineRuns)
+        .values({
+          id: `run-${id}`,
+          scanId: id,
+          engine,
+          status: 'done',
+          startedAt: at,
+          finishedAt: at,
+          exitCode: 0,
+          signal: null,
+          counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+          meta,
+          warnings: [],
+          error: null,
+        })
+        .run()
+    }
+    const c = await connect()
+
+    // zap-fe only: the nuclei findings were not looked at.
+    later('scan-b', 'zap-fe', { crawledUrls: ['http://localhost:3001/'], crawledUrlCount: 1 })
+    const partial = await call(c, 'get_scan', { scanId: 'scan-b' })
+    expect(partial.json.diff.resolved).toEqual([])
+    expect(
+      partial.json.diff.unverified.map((f: Record<string, unknown>) => [
+        f.id,
+        f.status,
+        f.unverifiedReason,
+      ]),
+    ).toEqual([
+      ['f1', 'unverified', 'engine-not-run'],
+      ['f2', 'unverified', 'engine-not-run'],
+    ])
+    expect(partial.json.engineRuns[0].meta).toEqual({ crawledUrlCount: 1 })
+    expect(partial.text).not.toContain(TOKEN)
+
+    // Same findings, but the engine that reported them ran again: resolved.
+    deps.db.delete(scans).where(eq(scans.id, 'scan-b')).run()
+    later('scan-c', 'nuclei', {})
+    const full = await call(c, 'get_scan', { scanId: 'scan-c' })
+    expect(full.json.diff.unverified).toEqual([])
+    expect(full.json.diff.resolved.map((f: Record<string, unknown>) => [f.id, f.status])).toEqual([
+      ['f1', 'resolved'],
+      ['f2', 'resolved'],
+    ])
+  })
+
   it('redacts secrets in findings with labeled placeholders and wraps evidence as untrusted', async () => {
     const { scan } = seed()
     const c = await connect()

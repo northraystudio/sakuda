@@ -298,7 +298,14 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
     {
       description:
         'Get a scan’s status, per-engine runs and the diff against the previous finished scan ' +
-        '(new/persisting counts and the resolved findings). Use list_findings for the findings. ' +
+        '(new/persisting counts, then the previous scan’s findings that are absent now). Those ' +
+        'are NOT current detections and come in two lists, each item carrying a status: ' +
+        'diff.resolved (status "resolved") — this scan looked and did not find it; ' +
+        'diff.unverified (status "unverified") — this scan did not look, so the finding may ' +
+        'still be there. unverifiedReason says why: engine-not-run (its engine was not selected, ' +
+        'failed or was skipped), url-not-reached (the engine ran but did not request that URL), ' +
+        'reach-unknown (no usable record of the URLs requested). Use list_findings for the ' +
+        'current findings. ' +
         'authLost is set (time, path, status) when the site’s login check saw 401/403 during ' +
         'the scan: results after that time may be from a logged-out session — cancel_scan ' +
         'stops a running scan. blockedBeforeApp is set (time, entries front/api with status) ' +
@@ -325,7 +332,14 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
           previousScanId: diff.previousScanId,
           newCount: diff.newCount,
           persistingCount: diff.persistingCount,
-          resolved: diff.resolved.map((f) => toMcpFinding(f, secrets)),
+          resolved: diff.resolved.map((f) => ({
+            status: 'resolved' as const,
+            ...toMcpFinding(f, secrets),
+          })),
+          unverified: diff.unverified.map((f) => ({
+            status: 'unverified' as const,
+            ...toMcpFinding(f, secrets),
+          })),
         },
         ...(outcome.revealDenied ? { revealDenied: outcome.revealDenied } : {}),
       })

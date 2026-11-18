@@ -522,6 +522,12 @@ describe('runZapFe', () => {
       expect(reachWarning(missing)).toBeUndefined()
       // 10 crawled entries in the fixture (structural nodes and the bad line excluded), un-aliased
       expect(missing.meta.crawledUrlCount).toBe(10)
+      // the reach record for the diff (#89): scheme, host and path only, deduped
+      const reach = missing.meta.crawledUrls as string[]
+      expect(reach).toContain('http://localhost:3000/admin/config')
+      expect(reach.every((u) => !u.includes('?') && !u.includes('#'))).toBe(true)
+      expect(new Set(reach).size).toBe(reach.length)
+      expect(missing.meta).not.toHaveProperty('crawledUrlsTruncated')
       // the dump script was written for ZAP and referenced by the plan
       expect(existsSync(join(tmp, 'missing', 'dump-site-tree.js'))).toBe(true)
 
@@ -556,6 +562,7 @@ describe('runZapFe', () => {
       const out = await runWith(withHeaders('/dash'), join(tmp, 'corrupt'), corrupt)
       expect(seedWarning(out)).toBeUndefined()
       expect(out.meta).not.toHaveProperty('crawledUrlCount')
+      expect(out.meta).not.toHaveProperty('crawledUrls')
     })
 
     it('skips the seed check (and records no crawled count) when the dump is missing', async () => {
@@ -576,6 +583,7 @@ describe('runZapFe', () => {
       })
       expect(seedWarning(out)).toBeUndefined()
       expect(out.meta).not.toHaveProperty('crawledUrlCount')
+      expect(out.meta).not.toHaveProperty('crawledUrls')
     })
   })
 

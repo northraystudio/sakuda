@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import type { ScanDiff } from '#shared/types/api'
+import type { ScanDiff, UnverifiedReason } from '#shared/types/api'
 
 defineProps<{ diff: ScanDiff | null }>()
+
+const UNVERIFIED_REASON_LABEL: Record<UnverifiedReason, string> = {
+  'engine-not-run': 'engine did not run',
+  'url-not-reached': 'URL not reached',
+  'reach-unknown': 'no record of the URLs reached',
+}
 </script>
 
 <template>
@@ -36,14 +42,38 @@ defineProps<{ diff: ScanDiff | null }>()
             {{ diff.resolved.length }}
           </dd>
         </div>
+        <div v-if="diff.unverified.length > 0">
+          <dt class="text-caption-sm text-mute">Not checked</dt>
+          <dd data-testid="diff-unverified" class="text-heading-md text-ink">
+            {{ diff.unverified.length }}
+          </dd>
+        </div>
       </dl>
 
-      <ul v-if="diff.resolved.length > 0" class="mt-4 flex flex-col gap-1">
-        <li v-for="finding in diff.resolved" :key="finding.id" class="text-caption-md text-mute">
-          {{ finding.ruleId }} — {{ finding.name }} —
-          <code class="break-all">{{ finding.url }}</code>
-        </li>
-      </ul>
+      <section v-if="diff.resolved.length > 0" class="mt-4" data-testid="diff-resolved-list">
+        <h3 class="text-caption-sm text-success">Resolved — checked, no longer detected</h3>
+        <ul class="mt-1 flex flex-col gap-1">
+          <li v-for="finding in diff.resolved" :key="finding.id" class="text-caption-md text-mute">
+            {{ finding.ruleId }} — {{ finding.name }} —
+            <code class="break-all">{{ finding.url }}</code>
+          </li>
+        </ul>
+      </section>
+
+      <section v-if="diff.unverified.length > 0" class="mt-4" data-testid="diff-unverified-list">
+        <h3 class="text-caption-sm text-ink">Not checked this time — may still be present</h3>
+        <ul class="mt-1 flex flex-col gap-1">
+          <li
+            v-for="finding in diff.unverified"
+            :key="finding.id"
+            class="text-caption-md text-mute"
+          >
+            {{ finding.ruleId }} — {{ finding.name }} —
+            <code class="break-all">{{ finding.url }}</code>
+            — {{ finding.engine }}: {{ UNVERIFIED_REASON_LABEL[finding.unverifiedReason] }}
+          </li>
+        </ul>
+      </section>
     </template>
   </section>
 </template>

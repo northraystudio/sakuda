@@ -98,6 +98,7 @@ function insertEngineRun(row: {
   startedAt: string
   counts?: { critical: number; high: number; medium: number; low: number; info: number }
   engine?: 'nuclei' | 'zap-api' | 'zap-fe'
+  status?: 'done' | 'failed' | 'skipped'
   meta?: Record<string, unknown>
 }) {
   db.insert(engineRuns)
@@ -105,7 +106,7 @@ function insertEngineRun(row: {
       id: row.id,
       scanId: row.scanId,
       engine: row.engine ?? 'nuclei',
-      status: 'done',
+      status: row.status ?? 'done',
       startedAt: row.startedAt,
       finishedAt: row.startedAt,
       exitCode: 0,
@@ -126,13 +127,14 @@ function insertFinding(row: {
   ruleId?: string
   severity?: FindingRow['severity']
   url?: string
+  engine?: 'nuclei' | 'zap-api' | 'zap-fe'
 }) {
   db.insert(findings)
     .values({
       id: row.id,
       scanId: row.scanId,
       engineRunId: row.engineRunId,
-      engine: 'nuclei',
+      engine: row.engine ?? 'nuclei',
       ruleId: row.ruleId ?? 'rule-1',
       name: 'Some finding',
       severity: row.severity ?? 'high',
@@ -261,6 +263,129 @@ describe('reportService', () => {
       const detail = getScanDetail(db, 'scan-2', detailDeps)
       expect(detail?.diff?.resolved).toHaveLength(1)
       expect(detail?.diff?.resolved[0]?.fingerprint).toBe('A')
+    })
+
+    describe('findings gone since the previous scan (#89)', () => {
+      const T1 = '2026-01-01T00:00:00Z'
+      const T2 = '2026-01-02T00:00:00Z'
+
+      /** scan-1 ran every engine: one zap-api finding and three zap-fe ones. */
+      function seedFullScan(siteId: string) {
+        insertScan({ id: 'scan-1', siteId, createdAt: T1, engines: ['zap-api', 'zap-fe'] })
+        insertEngineRun({ id: 'api-1', scanId: 'scan-1', startedAt: T1, engine: 'zap-api' })
+        insertEngineRun({ id: 'fe-1', scanId: 'scan-1', startedAt: T1, engine: 'zap-fe' })
+        const add = (id: string, engine: 'zap-api' | 'zap-fe', url: string) =>
+          insertFinding({
+            id,
+            scanId: 'scan-1',
+            engineRunId: engine === 'zap-api' ? 'api-1' : 'fe-1',
+            engine,
+            fingerprint: id,
+            url,
+          })
+        add('api-nosql', 'zap-api', 'http://localhost:3001/api/products')
+        add('fe-fixed', 'zap-fe', 'http://localhost:3001/')
+        add('fe-sitemap', 'zap-fe', 'http://localhost:3001/sitemap.xml')
+        add('fe-still', 'zap-fe', 'http://localhost:3001/')
+      }
+
+      function seedZapFeOnlyScan(siteId: string, feRun: Parameters<typeof insertEngineRun>[0]) {
+        insertScan({ id: 'scan-2', siteId, createdAt: T2, engines: ['zap-fe'] })
+        insertEngineRun(feRun)
+        if ((feRun.status ?? 'done') === 'done')
+          insertFinding({
+            id: 'fe-still-2',
+            scanId: 'scan-2',
+            engineRunId: feRun.id,
+            engine: 'zap-fe',
+            fingerprint: 'fe-still',
+          })
+      }
+
+      const fe2 = { id: 'fe-2', scanId: 'scan-2', startedAt: T2, engine: 'zap-fe' as const }
+      const gone = (siteId: string) => {
+        const diff = getScanDetail(db, 'scan-2', detailDeps)?.diff
+        return {
+          resolved: diff?.resolved.map((f) => f.fingerprint),
+          unverified: diff?.unverified.map((f) => [f.fingerprint, f.unverifiedReason]),
+          history: getSiteHistory(db, siteId).at(-1)?.diff,
+        }
+      }
+
+      it('a zap-fe-only scan leaves zap-api findings and unreached URLs unverified, not resolved', () => {
+        const site = createSite(siteDeps, base)
+        seedFullScan(site.id)
+        seedZapFeOnlyScan(site.id, { ...fe2, meta: { crawledUrls: ['http://localhost:3001/'] } })
+
+        const out = gone(site.id)
+        expect(out.resolved).toEqual(['fe-fixed'])
+        expect(out.unverified).toEqual([
+          ['api-nosql', 'engine-not-run'],
+          ['fe-sitemap', 'url-not-reached'],
+        ])
+        expect(out.history).toEqual({
+          new: 0,
+          persisting: 1,
+          resolved: 1,
+          unverified: 2,
+          suppressed: 0,
+        })
+      })
+
+      it('a finding whose URL was reached again is resolved', () => {
+        const site = createSite(siteDeps, base)
+        seedFullScan(site.id)
+        seedZapFeOnlyScan(site.id, {
+          ...fe2,
+          meta: { crawledUrls: ['http://localhost:3001/', 'http://localhost:3001/sitemap.xml'] },
+        })
+        expect(gone(site.id).resolved).toEqual(['fe-fixed', 'fe-sitemap'])
+      })
+
+      it('a zap-fe run without a reach record (older scan, missing dump) resolves nothing', () => {
+        const site = createSite(siteDeps, base)
+        seedFullScan(site.id)
+        seedZapFeOnlyScan(site.id, fe2)
+
+        const out = gone(site.id)
+        expect(out.resolved).toEqual([])
+        expect(out.unverified).toEqual([
+          ['api-nosql', 'engine-not-run'],
+          ['fe-fixed', 'reach-unknown'],
+          ['fe-sitemap', 'reach-unknown'],
+        ])
+      })
+
+      it('an engine that failed this time resolves nothing', () => {
+        const site = createSite(siteDeps, base)
+        seedFullScan(site.id)
+        seedZapFeOnlyScan(site.id, { ...fe2, status: 'failed' })
+
+        const out = gone(site.id)
+        expect(out.resolved).toEqual([])
+        expect(out.unverified?.map(([, reason]) => reason)).toEqual([
+          'engine-not-run',
+          'engine-not-run',
+          'engine-not-run',
+          'engine-not-run',
+        ])
+      })
+
+      it('keeps the reach record out of the engine run meta it returns', () => {
+        const site = createSite(siteDeps, base)
+        seedFullScan(site.id)
+        seedZapFeOnlyScan(site.id, {
+          ...fe2,
+          meta: {
+            crawledUrls: ['http://localhost:3001/'],
+            crawledUrlsTruncated: true,
+            crawledUrlCount: 1,
+          },
+        })
+        expect(getScanDetail(db, 'scan-2', detailDeps)?.engineRuns[0]?.meta).toEqual({
+          crawledUrlCount: 1,
+        })
+      })
     })
 
     it('orders engineRuns by startedAt and findings by severity, ruleId, url', () => {
@@ -429,7 +554,13 @@ describe('reportService', () => {
       expect(history[1]?.diff).toBeNull()
       expect(history[1]?.status).toBe('failed')
       expect(history[1]?.counts).toEqual({ critical: 0, high: 0, medium: 1, low: 0, info: 0 })
-      expect(history[2]?.diff).toEqual({ new: 1, persisting: 1, resolved: 1, suppressed: 0 })
+      expect(history[2]?.diff).toEqual({
+        new: 1,
+        persisting: 1,
+        resolved: 1,
+        unverified: 0,
+        suppressed: 0,
+      })
       expect(history[0]?.counts).toEqual({ critical: 1, high: 0, medium: 0, low: 0, info: 0 })
       expect(history[0]?.engines.nuclei).toEqual({
         critical: 1,
@@ -491,7 +622,13 @@ describe('finding triage (#18)', () => {
     expect(byFp.get('A')?.triage).toBeNull()
 
     const history = getSiteHistory(db, detail!.siteId)
-    expect(history.at(-1)?.diff).toEqual({ new: 1, persisting: 1, resolved: 0, suppressed: 1 })
+    expect(history.at(-1)?.diff).toEqual({
+      new: 1,
+      persisting: 1,
+      resolved: 0,
+      unverified: 0,
+      suppressed: 1,
+    })
   })
 
   it('a verdict on an earlier scan’s finding applies when it shows up again later', () => {

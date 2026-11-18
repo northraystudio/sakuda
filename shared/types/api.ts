@@ -245,7 +245,21 @@ export interface ScanDiff {
   /** Not in the previous scan, but left out of `newCount` because they are
    * triaged as false-positive / accepted. */
   suppressedCount: number
+  /** In the previous scan, not in this one, and this scan did look: the
+   * finding's engine finished, and (zap-fe) its URL was requested again. */
   resolved: FindingView[]
+  /** In the previous scan, not in this one, but this scan did not look —
+   * so it says nothing about whether the finding is fixed (#89). */
+  unverified: UnverifiedFindingView[]
+}
+/** Why a previous finding that is absent now could not be checked:
+ * `engine-not-run` — its engine did not finish in this scan (not selected,
+ * failed or skipped); `url-not-reached` — the engine ran but did not request
+ * the finding's URL; `reach-unknown` — the engine ran but left no usable
+ * record of the URLs it requested. */
+export type UnverifiedReason = 'engine-not-run' | 'url-not-reached' | 'reach-unknown'
+export interface UnverifiedFindingView extends FindingView {
+  unverifiedReason: UnverifiedReason
 }
 export interface ScanDetail extends ScanSummary {
   siteName: string
@@ -284,7 +298,14 @@ export interface HistoryPoint {
   status: ScanStatus
   counts: SeverityCounts
   engines: Partial<Record<Engine, SeverityCounts>>
-  diff: { new: number; persisting: number; resolved: number; suppressed: number } | null
+  diff: {
+    new: number
+    persisting: number
+    resolved: number
+    /** Gone from the previous scan but not checked by this one (#89). */
+    unverified: number
+    suppressed: number
+  } | null
 }
 /** The value-free shape of one JSON node: its type, plus (for containers)
  * child field names / element shapes. Never a captured value — only names and
