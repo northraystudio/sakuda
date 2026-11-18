@@ -87,7 +87,7 @@ function coverageOf(runs: EngineRunRow[]): ScanCoverage {
 /** The run's meta as the API shows it: the reach record is input to the diff,
  * not something to list (up to thousands of URLs on every poll). */
 function publicMeta(meta: Record<string, unknown>): Record<string, unknown> {
-  const { [REACH_URLS_KEY]: _reachUrls, ...rest } = meta
+  const { [REACH_URLS_KEY]: _reachUrls, [REACH_TRUNCATED_KEY]: _reachTruncated, ...rest } = meta
   return rest
 }
 

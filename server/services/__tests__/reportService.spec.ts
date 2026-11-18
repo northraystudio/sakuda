@@ -376,7 +376,11 @@ describe('reportService', () => {
         seedFullScan(site.id)
         seedZapFeOnlyScan(site.id, {
           ...fe2,
-          meta: { crawledUrls: ['http://localhost:3001/'], crawledUrlCount: 1 },
+          meta: {
+            crawledUrls: ['http://localhost:3001/'],
+            crawledUrlsTruncated: true,
+            crawledUrlCount: 1,
+          },
         })
         expect(getScanDetail(db, 'scan-2', detailDeps)?.engineRuns[0]?.meta).toEqual({
           crawledUrlCount: 1,
