@@ -10,6 +10,7 @@ import {
 } from '../db/schema'
 import {
   diffFingerprints,
+  pickEngineBaselines,
   splitGoneFindings,
   type ReachRecord,
   type ScanCoverage,
@@ -30,6 +31,7 @@ import type {
   FindingView,
   HistoryPoint,
   ScanDetail,
+  ScanDiff,
   SeverityCounts,
   UnverifiedFindingView,
 } from '#shared/types/api'
@@ -175,6 +177,60 @@ export function previousDoneScanId(
   return row ? row.id : null
 }
 
+/** A finished scan and the engines whose run finished in it. */
+interface FinishedScan {
+  scanId: string
+  doneEngines: Engine[]
+}
+
+/** The site's `done` scans strictly before `before` (as in
+ * {@link previousDoneScanId}), newest first, each with the engines that
+ * finished in it. A scan in which no engine finished is left out. */
+function earlierDoneScans(
+  db: Db,
+  siteId: string,
+  before: { createdAt: string; id: string },
+): FinishedScan[] {
+  const rows = db
+    .select({ scanId: scans.id, engine: engineRuns.engine })
+    .from(scans)
+    .innerJoin(engineRuns, eq(engineRuns.scanId, scans.id))
+    .where(
+      and(
+        eq(scans.siteId, siteId),
+        eq(scans.status, 'done'),
+        eq(engineRuns.status, 'done'),
+        lt(scans.createdAt, before.createdAt),
+        ne(scans.id, before.id),
+      ),
+    )
+    .orderBy(desc(scans.createdAt))
+    .all()
+  const byScan = new Map<string, FinishedScan>()
+  for (const { scanId, engine } of rows) {
+    const scan = byScan.get(scanId) ?? { scanId, doneEngines: [] }
+    scan.doneEngines.push(engine)
+    byScan.set(scanId, scan)
+  }
+  return [...byScan.values()]
+}
+
+/** The "previous findings" a scan is compared against (#90): from each
+ * engine's baseline scan, that engine's findings. */
+function baselineFindings(
+  baselines: ReadonlyMap<Engine, string>,
+  findingsOf: (scanId: string) => FindingRow[],
+): FindingRow[] {
+  const cache = new Map<string, FindingRow[]>()
+  const out: FindingRow[] = []
+  for (const [engine, scanId] of baselines) {
+    const rows = cache.get(scanId) ?? findingsOf(scanId)
+    cache.set(scanId, rows)
+    for (const row of rows) if (row.engine === engine) out.push(row)
+  }
+  return out
+}
+
 export function getScanDetail(db: Db, scanId: string, deps: ScanDetailDeps): ScanDetail | null {
   const scanRow = db.select().from(scans).where(eq(scans.id, scanId)).get()
   if (!scanRow) return null
@@ -205,7 +261,10 @@ export function getScanDetail(db: Db, scanId: string, deps: ScanDetailDeps): Sca
   let previousFingerprints = new Set<string>()
   let diff: ScanDetail['diff'] = null
   if (previousScanId) {
-    const previousFindingRows = findingsForScan(db, previousScanId)
+    const baselines = pickEngineBaselines(
+      earlierDoneScans(db, scanRow.siteId, { createdAt: scanRow.createdAt, id: scanRow.id }),
+    )
+    const previousFindingRows = baselineFindings(baselines, (id) => findingsForScan(db, id))
     previousFingerprints = new Set(previousFindingRows.map((f) => f.fingerprint))
     const currentFingerprintSet = new Set(currentFingerprints)
     const counts = diffFingerprints(previousFingerprints, currentFingerprintSet, suppressed)
@@ -215,8 +274,11 @@ export function getScanDetail(db: Db, scanId: string, deps: ScanDetailDeps): Sca
       coverageOf(engineRunRows),
     )
     const goneView = (f: FindingRow) => toFindingView(f, false, triage.get(f.fingerprint) ?? null)
+    const baselineScanIds: ScanDiff['baselineScanIds'] = {}
+    for (const [engine, id] of baselines) baselineScanIds[engine] = id
     diff = {
       previousScanId,
+      baselineScanIds,
       newCount: counts.new,
       persistingCount: counts.persisting,
       suppressedCount: counts.suppressed,
@@ -256,7 +318,10 @@ export function getSiteHistory(db: Db, siteId: string): HistoryPoint[] {
     .all()
 
   const suppressed = suppressedFingerprints(triageForSite(db, siteId))
-  let lastDoneFindings: FindingRow[] | null = null
+  // Newest first, as pickEngineBaselines reads it.
+  const earlier: FinishedScan[] = []
+  const findingsByScan = new Map<string, FindingRow[]>()
+  let hasPreviousDone = false
 
   return scanRows.map((scan) => {
     const engineRunRows = db.select().from(engineRuns).where(eq(engineRuns.scanId, scan.id)).all()
@@ -269,20 +334,25 @@ export function getSiteHistory(db: Db, siteId: string): HistoryPoint[] {
     if (scan.status === 'done') {
       const currentFindings = findingsForScan(db, scan.id)
       const currentFingerprints = new Set(currentFindings.map((f) => f.fingerprint))
-      if (lastDoneFindings) {
+      const coverage = coverageOf(engineRunRows)
+      if (hasPreviousDone) {
+        // Same comparison as getScanDetail, so the chart matches the scan page.
+        const previousFindings = baselineFindings(
+          pickEngineBaselines(earlier),
+          (id) => findingsByScan.get(id) ?? [],
+        )
         const counts = diffFingerprints(
-          lastDoneFindings.map((f) => f.fingerprint),
+          previousFindings.map((f) => f.fingerprint),
           currentFingerprints,
           suppressed,
         )
-        const gone = splitGoneFindings(
-          lastDoneFindings,
-          currentFingerprints,
-          coverageOf(engineRunRows),
-        )
+        const gone = splitGoneFindings(previousFindings, currentFingerprints, coverage)
         diff = { ...counts, resolved: gone.resolved.length, unverified: gone.unverified.length }
       }
-      lastDoneFindings = currentFindings
+      hasPreviousDone = true
+      findingsByScan.set(scan.id, currentFindings)
+      if (coverage.doneEngines.size > 0)
+        earlier.unshift({ scanId: scan.id, doneEngines: [...coverage.doneEngines] })
     }
 
     return {

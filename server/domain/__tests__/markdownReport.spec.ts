@@ -164,6 +164,7 @@ const detail: ScanDetail = {
   findings: [nucleiFinding],
   diff: {
     previousScanId: 'scan-prev',
+    baselineScanIds: {},
     newCount: 1,
     persistingCount: 0,
     suppressedCount: 0,
@@ -235,6 +236,7 @@ describe('buildScanMarkdown', () => {
       ...detail,
       diff: {
         previousScanId: 'scan-prev',
+        baselineScanIds: {},
         newCount: 0,
         persistingCount: 0,
         suppressedCount: 0,
@@ -251,6 +253,7 @@ describe('buildScanMarkdown', () => {
       ...detail,
       diff: {
         previousScanId: 'scan-prev',
+        baselineScanIds: {},
         newCount: 0,
         persistingCount: 0,
         suppressedCount: 0,
@@ -400,5 +403,22 @@ describe('buildScanMarkdown', () => {
     const errorLines = withRunbookError.split('\n')
     expect(errorLines).toContain('boom')
     expect(errorLines).toContain('Runbook: do X')
+  })
+
+  it('names the engines compared with an older scan than the previous one, only when there are any (#90)', () => {
+    const diff = detail.diff!
+    const note = 'The previous scan did not run every engine.'
+    const mixed = buildScanMarkdown({
+      ...detail,
+      diff: { ...diff, baselineScanIds: { nuclei: 'scan-prev', 'zap-api': 'scan-older' } },
+    })
+    expect(mixed).toContain(
+      `${note} Compared with the engine's last finished scan: zap-api (\`scan-older\`)`,
+    )
+    const same = buildScanMarkdown({
+      ...detail,
+      diff: { ...diff, baselineScanIds: { nuclei: 'scan-prev' } },
+    })
+    expect(same).not.toContain(note)
   })
 })

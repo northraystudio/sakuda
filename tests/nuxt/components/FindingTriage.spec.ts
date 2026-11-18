@@ -32,6 +32,7 @@ describe('finding triage display (#18)', () => {
   it('counts triaged would-be-new findings apart from new ones in the diff', async () => {
     const diff = {
       previousScanId: 'scan-0',
+      baselineScanIds: {},
       newCount: 1,
       persistingCount: 2,
       resolved: [],

@@ -3,6 +3,7 @@ import {
   buildReachRecord,
   classifyGoneFinding,
   diffFingerprints,
+  pickEngineBaselines,
   reachKey,
   splitGoneFindings,
   type ScanCoverage,
@@ -143,5 +144,28 @@ describe('buildReachRecord', () => {
       truncated: false,
     })
     expect(buildReachRecord(urls, 1)).toEqual({ urls: ['http://shop.test/a'], truncated: true })
+  })
+})
+
+describe('pickEngineBaselines (#90)', () => {
+  it('picks, per engine, the newest earlier scan in which that engine finished', () => {
+    const baselines = pickEngineBaselines([
+      { scanId: 'scan-3', doneEngines: ['zap-fe'] },
+      { scanId: 'scan-2', doneEngines: ['zap-fe', 'zap-api'] },
+      { scanId: 'scan-1', doneEngines: ['zap-api', 'nuclei'] },
+    ])
+    expect(Object.fromEntries(baselines)).toEqual({
+      'zap-fe': 'scan-3',
+      'zap-api': 'scan-2',
+      nuclei: 'scan-1',
+    })
+  })
+
+  it('has no entry for an engine that never finished, and none at all without earlier scans', () => {
+    expect(pickEngineBaselines([{ scanId: 'scan-1', doneEngines: [] }]).size).toBe(0)
+    expect(pickEngineBaselines([]).size).toBe(0)
+    expect(pickEngineBaselines([{ scanId: 'scan-1', doneEngines: ['nuclei'] }]).has('dalfox')).toBe(
+      false,
+    )
   })
 })

@@ -6,6 +6,7 @@ import type { ScanDiff } from '#shared/types/api'
 
 const base: ScanDiff = {
   previousScanId: 'scan-0',
+  baselineScanIds: {},
   newCount: 1,
   persistingCount: 2,
   suppressedCount: 0,
@@ -54,5 +55,27 @@ describe('DiffSummary (#89)', () => {
     expect(wrapper.find('[data-testid="diff-unverified"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="diff-unverified-list"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="diff-resolved-list"]').exists()).toBe(false)
+  })
+
+  it('names the engines compared with an older scan than the previous one (#90)', async () => {
+    const wrapper = await mountSuspended(DiffSummary, {
+      props: {
+        diff: {
+          ...base,
+          baselineScanIds: { 'zap-fe': 'scan-0', 'zap-api': 'scan-older-1234' },
+        },
+      },
+    })
+    const note = wrapper.find('[data-testid="diff-older-baselines"]')
+    expect(note.text()).toContain('zap-api')
+    expect(note.text()).not.toContain('zap-fe')
+    expect(note.find('a').attributes('href')).toBe('/scans/scan-older-1234')
+  })
+
+  it('says nothing about comparison scans when every engine is compared with the previous scan', async () => {
+    const wrapper = await mountSuspended(DiffSummary, {
+      props: { diff: { ...base, baselineScanIds: { 'zap-fe': 'scan-0' } } },
+    })
+    expect(wrapper.find('[data-testid="diff-older-baselines"]').exists()).toBe(false)
   })
 })

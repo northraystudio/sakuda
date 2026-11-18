@@ -115,3 +115,18 @@ export function buildReachRecord(
   const keys = [...new Set(urls.map(reachKey))]
   return { urls: keys.slice(0, max), truncated: keys.length > max }
 }
+
+/** For each engine, the scan its findings are compared against: the newest
+ * earlier scan in which that engine finished (#90). Comparing against the one
+ * previous scan would call an engine's findings new, and miss the ones it
+ * resolved, whenever that scan did not run the engine. `earlier` is newest
+ * first; an engine that never finished has no entry. */
+export function pickEngineBaselines(
+  earlier: ReadonlyArray<{ scanId: string; doneEngines: Iterable<Engine> }>,
+): Map<Engine, string> {
+  const baselines = new Map<Engine, string>()
+  for (const scan of earlier)
+    for (const engine of scan.doneEngines)
+      if (!baselines.has(engine)) baselines.set(engine, scan.scanId)
+  return baselines
+}

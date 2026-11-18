@@ -297,8 +297,11 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
     'get_scan',
     {
       description:
-        'Get a scan’s status, per-engine runs and the diff against the previous finished scan ' +
-        '(new/persisting counts, then the previous scan’s findings that are absent now). Those ' +
+        'Get a scan’s status, per-engine runs and the diff against earlier scans ' +
+        '(new/persisting counts, then earlier findings that are absent now). Each engine is ' +
+        'compared with the latest earlier scan in which that engine finished — ' +
+        'diff.baselineScanIds maps engine to that scan id; it differs from diff.previousScanId ' +
+        '(the latest finished scan) when that scan did not run the engine. The absent findings ' +
         'are NOT current detections and come in two lists, each item carrying a status: ' +
         'diff.resolved (status "resolved") — this scan looked and did not find it; ' +
         'diff.unverified (status "unverified") — this scan did not look, so the finding may ' +
@@ -330,6 +333,7 @@ export function createSakudaMcpServer(deps: McpToolDeps, ctx: McpRequestContext)
         findingCount: detail.findings.length,
         diff: diff && {
           previousScanId: diff.previousScanId,
+          baselineScanIds: diff.baselineScanIds,
           newCount: diff.newCount,
           persistingCount: diff.persistingCount,
           resolved: diff.resolved.map((f) => ({

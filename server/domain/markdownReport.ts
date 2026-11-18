@@ -8,6 +8,7 @@ import type {
   SeverityCounts,
 } from '#shared/types/api'
 import { addCounts, emptyCounts, REPORTED_SEVERITIES } from '#shared/utils/severity'
+import { olderBaselines } from '#shared/utils/scanDiff'
 import { engineMetaTable } from './markdownEngineMeta'
 import { code, fence, fmtDuration, metaStringArray, text } from './markdownHelpers'
 
@@ -99,6 +100,14 @@ function diffSection(diff: ScanDiff | null): string[] {
     `Resolved: ${diff.resolved.length}`,
     `Not checked this time: ${diff.unverified.length}`,
   )
+  const older = olderBaselines(diff)
+  if (older.length > 0)
+    out.push(
+      '',
+      `The previous scan did not run every engine. Compared with the engine's last finished scan: ${older
+        .map(({ engine, scanId }) => `${text(engine)} (${code(scanId)})`)
+        .join(', ')}`,
+    )
   if (diff.resolved.length > 0) {
     out.push('', '### Resolved (checked, no longer detected)', '')
     for (const f of diff.resolved)
