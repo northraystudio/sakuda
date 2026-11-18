@@ -3,6 +3,7 @@ import type {
   FindingView,
   ScanDetail,
   ScanDiff,
+  UnverifiedReason,
   Severity,
   SeverityCounts,
 } from '#shared/types/api'
@@ -80,6 +81,12 @@ function summarySection(detail: ScanDetail): string[] {
   ]
 }
 
+const UNVERIFIED_REASON_TEXT: Record<UnverifiedReason, string> = {
+  'engine-not-run': 'engine did not run',
+  'url-not-reached': 'URL not reached',
+  'reach-unknown': 'no record of the URLs reached',
+}
+
 function diffSection(diff: ScanDiff | null): string[] {
   const out = ['## Changes vs previous scan', '']
   if (!diff) {
@@ -90,11 +97,19 @@ function diffSection(diff: ScanDiff | null): string[] {
     `New: ${diff.newCount}`,
     `Persisting: ${diff.persistingCount}`,
     `Resolved: ${diff.resolved.length}`,
+    `Not checked this time: ${diff.unverified.length}`,
   )
   if (diff.resolved.length > 0) {
-    out.push('')
+    out.push('', '### Resolved (checked, no longer detected)', '')
     for (const f of diff.resolved)
       out.push(`- ${text(f.ruleId)} — ${text(f.name)} — ${code(f.url)}`)
+  }
+  if (diff.unverified.length > 0) {
+    out.push('', '### Not checked this time (may still be present)', '')
+    for (const f of diff.unverified)
+      out.push(
+        `- ${text(f.ruleId)} — ${text(f.name)} — ${code(f.url)} — ${text(f.engine)}: ${UNVERIFIED_REASON_TEXT[f.unverifiedReason]}`,
+      )
   }
   return out
 }

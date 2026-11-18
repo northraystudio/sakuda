@@ -30,7 +30,13 @@ describe('finding triage display (#18)', () => {
   })
 
   it('counts triaged would-be-new findings apart from new ones in the diff', async () => {
-    const diff = { previousScanId: 'scan-0', newCount: 1, persistingCount: 2, resolved: [] }
+    const diff = {
+      previousScanId: 'scan-0',
+      newCount: 1,
+      persistingCount: 2,
+      resolved: [],
+      unverified: [],
+    }
     const shown = await mountSuspended(DiffSummary, {
       props: { diff: { ...diff, suppressedCount: 3 } },
     })

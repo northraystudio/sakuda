@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isActiveScanEnabled, isSafeMethod, seedEmptyQueryValues } from '../../domain/activeScan'
 import { zapScopeContext } from '../../domain/crawlScope'
+import { buildReachRecord } from '../../domain/diff'
 import {
   DOM_XSS_PROBE_BUDGET_MINUTES,
   engineTimeBudget,
@@ -238,6 +239,9 @@ export const runZapFe: EngineRunner = async ({ scanId, site, workDir, env, logge
   const crawledUrls = await readCrawledUrls(workDir, logger, (u) =>
     restoreLoopbackHost(u, alias, originalHost),
   )
+  // A URL that produced an alert was requested too, even when the dump (taken
+  // right after the spiders) predates it.
+  const reach = crawledUrls !== null ? buildReachRecord([...crawledUrls, ...n.reachedUrls]) : null
   const warnings: string[] = []
   if (domXssSummary?.truncated)
     warnings.push(
@@ -287,6 +291,14 @@ export const runZapFe: EngineRunner = async ({ scanId, site, workDir, env, logge
       reachedUrlCount: n.reachedUrls.length,
       reachedUrls: n.reachedUrls.slice(0, 200),
       ...(crawledUrls !== null ? { crawledUrlCount: crawledUrls.length } : {}),
+      // What this run requested, so a later diff can tell "fixed" from "not
+      // looked at" (#89). Scheme, host and path only — no query values.
+      ...(reach !== null
+        ? {
+            crawledUrls: reach.urls,
+            ...(reach.truncated ? { crawledUrlsTruncated: true } : {}),
+          }
+        : {}),
       authFailureCount: n.authFailureCount,
       alertCounts: n.alertCounts,
       excludeRegexes,

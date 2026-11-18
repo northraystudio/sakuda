@@ -168,6 +168,7 @@ const detail: ScanDetail = {
     persistingCount: 0,
     suppressedCount: 0,
     resolved: [],
+    unverified: [],
   },
   now: '2026-08-30T01:11:00.000Z',
 }
@@ -238,9 +239,44 @@ describe('buildScanMarkdown', () => {
         persistingCount: 0,
         suppressedCount: 0,
         resolved: [resolvedFinding],
+        unverified: [],
       },
     })
     expect(withResolved).toContain('old-rule — Old Finding — `https://shop.example.com/old`')
+    expect(withResolved).not.toContain('### Not checked this time')
+  })
+
+  it('lists findings this scan did not check apart from the resolved ones, with the reason (#89)', () => {
+    const md = buildScanMarkdown({
+      ...detail,
+      diff: {
+        previousScanId: 'scan-prev',
+        newCount: 0,
+        persistingCount: 0,
+        suppressedCount: 0,
+        resolved: [],
+        unverified: [
+          {
+            ...nucleiFinding,
+            id: 'f-unverified',
+            engine: 'zap-api',
+            ruleId: 'nosql',
+            name: 'NoSQL Injection',
+            url: 'https://shop.example.com/api/x',
+            isNew: false,
+            unverifiedReason: 'engine-not-run',
+          },
+        ],
+      },
+    })
+    const out = md.split('\n')
+    expect(out).toContain('Resolved: 0')
+    expect(out).toContain('Not checked this time: 1')
+    expect(out).toContain('### Not checked this time (may still be present)')
+    expect(out).toContain(
+      '- nosql — NoSQL Injection — `https://shop.example.com/api/x` — zap-api: engine did not run',
+    )
+    expect(md).not.toContain('### Resolved')
   })
 
   it('renders nuclei-specific metadata from meta.stats', () => {

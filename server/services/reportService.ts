@@ -8,7 +8,13 @@ import {
   type EngineRunRow,
   type FindingRow,
 } from '../db/schema'
-import { diffFingerprints } from '../domain/diff'
+import {
+  diffFingerprints,
+  splitGoneFindings,
+  type ReachRecord,
+  type ScanCoverage,
+} from '../domain/diff'
+import { metaBoolean, metaStringArray } from '../domain/markdownHelpers'
 import { isActiveScanEnabled } from '../domain/activeScan'
 import {
   engineTimeBudget,
@@ -25,6 +31,7 @@ import type {
   HistoryPoint,
   ScanDetail,
   SeverityCounts,
+  UnverifiedFindingView,
 } from '#shared/types/api'
 import { addCounts, emptyCounts, severityRank } from '#shared/utils/severity'
 
@@ -53,6 +60,37 @@ function runLimits(
   return { ...estimate, estimated: true }
 }
 
+/** Engines whose "gone" findings are judged by URL as well as by whether the
+ * engine ran: zap-fe sees only what its crawl reaches, and records it. The
+ * others request a saved target list and keep no such record (#89). */
+const REACH_JUDGED_ENGINES: readonly Engine[] = ['zap-fe']
+
+/** Meta keys holding a run's reach record (written by zap-fe). */
+const REACH_URLS_KEY = 'crawledUrls'
+const REACH_TRUNCATED_KEY = 'crawledUrlsTruncated'
+
+function reachRecordOf(meta: Record<string, unknown>): ReachRecord | null {
+  const urls = metaStringArray(meta, REACH_URLS_KEY)
+  if (!urls) return null
+  return { urls: new Set(urls), truncated: metaBoolean(meta, REACH_TRUNCATED_KEY) }
+}
+
+/** What a scan looked at, from its engine runs — see {@link ScanCoverage}. */
+function coverageOf(runs: EngineRunRow[]): ScanCoverage {
+  const done = runs.filter((r) => r.status === 'done')
+  const reach = new Map<Engine, ReachRecord | null>()
+  for (const run of done)
+    if (REACH_JUDGED_ENGINES.includes(run.engine)) reach.set(run.engine, reachRecordOf(run.meta))
+  return { doneEngines: new Set(done.map((r) => r.engine)), reach }
+}
+
+/** The run's meta as the API shows it: the reach record is input to the diff,
+ * not something to list (up to thousands of URLs on every poll). */
+function publicMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  const { [REACH_URLS_KEY]: _reachUrls, ...rest } = meta
+  return rest
+}
+
 function toEngineRunView(
   row: EngineRunRow,
   snapshot: SiteSnapshot,
@@ -67,7 +105,7 @@ function toEngineRunView(
     exitCode: row.exitCode,
     signal: row.signal,
     counts: row.counts,
-    meta: row.meta,
+    meta: publicMeta(row.meta),
     warnings: row.warnings,
     error: row.error,
     limits: runLimits(row, snapshot, env),
@@ -111,20 +149,6 @@ function sortFindingRows(rows: FindingRow[]): FindingRow[] {
 
 function findingsForScan(db: Db, scanId: string): FindingRow[] {
   return db.select().from(findings).where(eq(findings.scanId, scanId)).all()
-}
-
-/** Keeps the first row per fingerprint so a caller counting unique
- * fingerprints (e.g. `diffFingerprints`'s `resolved` count) gets a matching
- * row count, even if multiple finding rows share a fingerprint. */
-function dedupeByFingerprint(rows: FindingRow[]): FindingRow[] {
-  const seen = new Set<string>()
-  const result: FindingRow[] = []
-  for (const row of rows) {
-    if (seen.has(row.fingerprint)) continue
-    seen.add(row.fingerprint)
-    result.push(row)
-  }
-  return result
 }
 
 /** Latest `done` scan of the site strictly before `before.createdAt`
@@ -185,15 +209,22 @@ export function getScanDetail(db: Db, scanId: string, deps: ScanDetailDeps): Sca
     previousFingerprints = new Set(previousFindingRows.map((f) => f.fingerprint))
     const currentFingerprintSet = new Set(currentFingerprints)
     const counts = diffFingerprints(previousFingerprints, currentFingerprintSet, suppressed)
-    const resolved = dedupeByFingerprint(
-      previousFindingRows.filter((f) => !currentFingerprintSet.has(f.fingerprint)),
-    ).map((f) => toFindingView(f, false, triage.get(f.fingerprint) ?? null))
+    const gone = splitGoneFindings(
+      previousFindingRows,
+      currentFingerprintSet,
+      coverageOf(engineRunRows),
+    )
+    const goneView = (f: FindingRow) => toFindingView(f, false, triage.get(f.fingerprint) ?? null)
     diff = {
       previousScanId,
       newCount: counts.new,
       persistingCount: counts.persisting,
       suppressedCount: counts.suppressed,
-      resolved,
+      resolved: gone.resolved.map(goneView),
+      unverified: gone.unverified.map(({ finding, reason }): UnverifiedFindingView => ({
+        ...goneView(finding),
+        unverifiedReason: reason,
+      })),
     }
   }
 
@@ -225,7 +256,7 @@ export function getSiteHistory(db: Db, siteId: string): HistoryPoint[] {
     .all()
 
   const suppressed = suppressedFingerprints(triageForSite(db, siteId))
-  let lastDoneFingerprints: Set<string> | null = null
+  let lastDoneFindings: FindingRow[] | null = null
 
   return scanRows.map((scan) => {
     const engineRunRows = db.select().from(engineRuns).where(eq(engineRuns.scanId, scan.id)).all()
@@ -236,10 +267,22 @@ export function getSiteHistory(db: Db, siteId: string): HistoryPoint[] {
 
     let diff: HistoryPoint['diff'] = null
     if (scan.status === 'done') {
-      const currentFingerprints = new Set(findingsForScan(db, scan.id).map((f) => f.fingerprint))
-      if (lastDoneFingerprints)
-        diff = diffFingerprints(lastDoneFingerprints, currentFingerprints, suppressed)
-      lastDoneFingerprints = currentFingerprints
+      const currentFindings = findingsForScan(db, scan.id)
+      const currentFingerprints = new Set(currentFindings.map((f) => f.fingerprint))
+      if (lastDoneFindings) {
+        const counts = diffFingerprints(
+          lastDoneFindings.map((f) => f.fingerprint),
+          currentFingerprints,
+          suppressed,
+        )
+        const gone = splitGoneFindings(
+          lastDoneFindings,
+          currentFingerprints,
+          coverageOf(engineRunRows),
+        )
+        diff = { ...counts, resolved: gone.resolved.length, unverified: gone.unverified.length }
+      }
+      lastDoneFindings = currentFindings
     }
 
     return {
