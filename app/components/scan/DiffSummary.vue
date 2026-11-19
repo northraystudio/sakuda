@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { ScanDiff, UnverifiedReason } from '#shared/types/api'
+import { olderBaselines } from '#shared/utils/scanDiff'
 
-defineProps<{ diff: ScanDiff | null }>()
+const props = defineProps<{ diff: ScanDiff | null }>()
+
+const older = computed(() => (props.diff ? olderBaselines(props.diff) : []))
 
 const UNVERIFIED_REASON_LABEL: Record<UnverifiedReason, string> = {
   'engine-not-run': 'engine did not run',
@@ -49,6 +52,21 @@ const UNVERIFIED_REASON_LABEL: Record<UnverifiedReason, string> = {
           </dd>
         </div>
       </dl>
+
+      <p
+        v-if="older.length > 0"
+        data-testid="diff-older-baselines"
+        class="mt-2 text-caption-md text-mute"
+      >
+        The previous scan did not run every engine. Compared with the engine’s last finished scan:
+        <template v-for="(entry, index) in older" :key="entry.engine">
+          <template v-if="index > 0">, </template>
+          {{ entry.engine }} (<NuxtLink :to="`/scans/${entry.scanId}`" class="text-ink underline">{{
+            entry.scanId.slice(0, 8)
+          }}</NuxtLink
+          >)
+        </template>
+      </p>
 
       <section v-if="diff.resolved.length > 0" class="mt-4" data-testid="diff-resolved-list">
         <h3 class="text-caption-sm text-success">Resolved — checked, no longer detected</h3>

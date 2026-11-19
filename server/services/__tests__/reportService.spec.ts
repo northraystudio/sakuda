@@ -386,6 +386,129 @@ describe('reportService', () => {
           crawledUrlCount: 1,
         })
       })
+
+      describe('a scan that ran only some engines sits in between (#90)', () => {
+        const T3 = '2026-01-03T00:00:00Z'
+
+        /** scan-1: every engine (plus one more zap-api finding); scan-2: zap-fe only. */
+        function seedFullThenZapFeOnly(siteId: string) {
+          seedFullScan(siteId)
+          insertFinding({
+            id: 'api-gone',
+            scanId: 'scan-1',
+            engineRunId: 'api-1',
+            engine: 'zap-api',
+            fingerprint: 'api-gone',
+            url: 'http://localhost:3001/api/orders',
+          })
+          seedZapFeOnlyScan(siteId, { ...fe2, meta: { crawledUrls: ['http://localhost:3001/'] } })
+        }
+
+        it('compares each engine with the last scan it finished in: zap-api findings persist or resolve, not new', () => {
+          const site = createSite(siteDeps, base)
+          seedFullThenZapFeOnly(site.id)
+          insertScan({
+            id: 'scan-3',
+            siteId: site.id,
+            createdAt: T3,
+            engines: ['zap-api', 'zap-fe'],
+          })
+          insertEngineRun({ id: 'api-3', scanId: 'scan-3', startedAt: T3, engine: 'zap-api' })
+          insertEngineRun({
+            id: 'fe-3',
+            scanId: 'scan-3',
+            startedAt: T3,
+            engine: 'zap-fe',
+            meta: { crawledUrls: ['http://localhost:3001/'] },
+          })
+          const add = (fingerprint: string, engine: 'zap-api' | 'zap-fe') =>
+            insertFinding({
+              id: `${fingerprint}-3`,
+              scanId: 'scan-3',
+              engineRunId: engine === 'zap-api' ? 'api-3' : 'fe-3',
+              engine,
+              fingerprint,
+            })
+          add('api-nosql', 'zap-api')
+          add('api-brand-new', 'zap-api')
+          add('fe-still', 'zap-fe')
+
+          const detail = getScanDetail(db, 'scan-3', detailDeps)
+          expect(detail?.diff?.previousScanId).toBe('scan-2')
+          expect(detail?.diff?.baselineScanIds).toEqual({ 'zap-api': 'scan-1', 'zap-fe': 'scan-2' })
+          expect(detail?.findings.filter((f) => f.isNew).map((f) => f.fingerprint)).toEqual([
+            'api-brand-new',
+          ])
+          expect(detail?.diff?.newCount).toBe(1)
+          expect(detail?.diff?.persistingCount).toBe(2)
+          expect(detail?.diff?.resolved.map((f) => f.fingerprint)).toEqual(['api-gone'])
+          expect(detail?.diff?.unverified).toEqual([])
+
+          // The history chart shows the same numbers as the scan page.
+          expect(getSiteHistory(db, site.id).at(-1)?.diff).toEqual({
+            new: 1,
+            persisting: 2,
+            resolved: 1,
+            unverified: 0,
+            suppressed: 0,
+          })
+        })
+
+        it('keeps an engine’s findings unverified for as long as that engine is not run', () => {
+          const site = createSite(siteDeps, base)
+          seedFullThenZapFeOnly(site.id)
+          insertScan({ id: 'scan-3', siteId: site.id, createdAt: T3, engines: ['zap-fe'] })
+          insertEngineRun({
+            id: 'fe-3',
+            scanId: 'scan-3',
+            startedAt: T3,
+            engine: 'zap-fe',
+            meta: { crawledUrls: ['http://localhost:3001/'] },
+          })
+          insertFinding({
+            id: 'fe-still-3',
+            scanId: 'scan-3',
+            engineRunId: 'fe-3',
+            engine: 'zap-fe',
+            fingerprint: 'fe-still',
+          })
+
+          const diff = getScanDetail(db, 'scan-3', detailDeps)?.diff
+          expect(diff?.baselineScanIds).toEqual({ 'zap-api': 'scan-1', 'zap-fe': 'scan-2' })
+          expect(diff?.resolved).toEqual([])
+          expect(diff?.unverified.map((f) => [f.fingerprint, f.unverifiedReason]).sort()).toEqual([
+            ['api-gone', 'engine-not-run'],
+            ['api-nosql', 'engine-not-run'],
+          ])
+          expect(getSiteHistory(db, site.id).at(-1)?.diff).toEqual({
+            new: 0,
+            persisting: 1,
+            resolved: 0,
+            unverified: 2,
+            suppressed: 0,
+          })
+        })
+
+        it('does not take an engine’s baseline from a scan in which that engine failed', () => {
+          const site = createSite(siteDeps, base)
+          seedFullScan(site.id)
+          // scan-2: zap-api failed part-way, leaving one finding behind.
+          seedZapFeOnlyScan(site.id, { ...fe2, meta: { crawledUrls: ['http://localhost:3001/'] } })
+          insertEngineRun({
+            id: 'api-2',
+            scanId: 'scan-2',
+            startedAt: T2,
+            engine: 'zap-api',
+            status: 'failed',
+          })
+          insertScan({ id: 'scan-3', siteId: site.id, createdAt: T3, engines: ['zap-api'] })
+          insertEngineRun({ id: 'api-3', scanId: 'scan-3', startedAt: T3, engine: 'zap-api' })
+
+          const diff = getScanDetail(db, 'scan-3', detailDeps)?.diff
+          expect(diff?.baselineScanIds['zap-api']).toBe('scan-1')
+          expect(diff?.resolved.map((f) => f.fingerprint)).toEqual(['api-nosql'])
+        })
+      })
     })
 
     it('orders engineRuns by startedAt and findings by severity, ruleId, url', () => {

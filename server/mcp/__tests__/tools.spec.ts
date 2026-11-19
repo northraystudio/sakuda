@@ -213,6 +213,8 @@ describe('sakuda MCP tools', () => {
     later('scan-b', 'zap-fe', { crawledUrls: ['http://localhost:3001/'], crawledUrlCount: 1 })
     const partial = await call(c, 'get_scan', { scanId: 'scan-b' })
     expect(partial.json.diff.resolved).toEqual([])
+    // Each engine's comparison scan is named (#90): nuclei last finished in the first scan.
+    expect(partial.json.diff.baselineScanIds).toEqual({ nuclei: scan.id })
     expect(
       partial.json.diff.unverified.map((f: Record<string, unknown>) => [
         f.id,

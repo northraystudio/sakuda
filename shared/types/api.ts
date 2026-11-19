@@ -239,7 +239,13 @@ export interface FindingView {
   triage: FindingTriageView | null
 }
 export interface ScanDiff {
+  /** The latest finished scan before this one. */
   previousScanId: string
+  /** Per engine, the scan its findings are compared against: the latest
+   * earlier scan in which that engine finished (#90). It differs from
+   * `previousScanId` when the previous scan did not run the engine; an engine
+   * that never finished before has no entry, so its findings are all new. */
+  baselineScanIds: Partial<Record<Engine, string>>
   newCount: number
   persistingCount: number
   /** Not in the previous scan, but left out of `newCount` because they are
